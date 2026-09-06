@@ -7,17 +7,20 @@ const env = new nunjucks.Environment(null, { autoescape: false });
 interface LiteralCalls {
   states: string[];
   entityCalls: string[];
+  calls: string[];
 }
 
 function extractLiterals(template: string): LiteralCalls {
   const states: string[] = [];
   const entityCalls: string[] = [];
+  const calls: string[] = [];
   for (const m of template.matchAll(/ha\.state\(\s*["']([^"']+)["']\s*\)/g)) states.push(m[1] as string);
   for (const m of template.matchAll(/ha\.entities\(\s*["']([^"']*)["']\s*\)/g)) {
     const domain = m[1] as string;
     if (domain) entityCalls.push(domain);
   }
-  return { states, entityCalls };
+  for (const m of template.matchAll(/ha\.call\(\s*["']([^"']+)["']\s*\)/g)) calls.push(m[1] as string);
+  return { states, entityCalls, calls };
 }
 
 function findTool(
@@ -29,6 +32,17 @@ function findTool(
       const tool = server.tools.find((t) => pattern.test(t.name));
       if (tool) return { server, toolName: tool.name };
     }
+  }
+  return undefined;
+}
+
+function findToolExact(
+  mcp: McpContext,
+  toolName: string
+): { server: McpContext['servers'][number]; toolName: string } | undefined {
+  for (const server of mcp.servers) {
+    const tool = server.tools.find((t) => t.name === toolName);
+    if (tool) return { server, toolName };
   }
   return undefined;
 }
@@ -47,16 +61,55 @@ function extractText(result: unknown): string {
   return String(result ?? '');
 }
 
+function stripSsml(text: string): string {
+  return text
+    .replace(/<speak>|<\/speak>/gi, '')
+    .replace(/<break[^>]*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function unwrapSpeech(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const ssml = obj.ssml;
+    if (typeof ssml === 'string') return stripSsml(ssml);
+    if (ssml && typeof ssml === 'object') {
+      const inner = (ssml as Record<string, unknown>).speech;
+      if (typeof inner === 'string') return stripSsml(inner);
+    }
+    if (typeof obj.speech === 'string') return obj.speech;
+  }
+  return null;
+}
+
 async function preheat(
   template: string,
   mcp: McpContext,
   trace: TraceEvent[]
 ): Promise<Record<string, unknown>> {
-  const { states, entityCalls } = extractLiterals(template);
+  const { states, entityCalls, calls } = extractLiterals(template);
   const stateMap = new Map<string, string | null>();
   const entityMap = new Map<string, unknown[]>();
+  const callMap = new Map<string, string | null>();
   const stateTool = findTool(mcp, [/state/i]);
   const listTool = findTool(mcp, [/search|lookup|entit/i]);
+
+  for (const toolName of calls) {
+    if (callMap.has(toolName)) continue;
+    try {
+      const found = findToolExact(mcp, toolName);
+      if (!found) throw new Error(`Tool ${toolName} auf keinem MCP-Server gefunden`);
+      const result = await found.server.client.callTool(found.toolName, {});
+      callMap.set(toolName, extractText(result));
+      trace.push({ ts: Date.now(), step: 'template.call', detail: { toolName, server: found.server.name } });
+    } catch (e) {
+      trace.push({ ts: Date.now(), step: 'template.call.error', detail: { toolName, error: String(e) } });
+      callMap.set(toolName, null);
+    }
+  }
 
   for (const entityId of states) {
     if (stateMap.has(entityId)) continue;
@@ -88,6 +141,7 @@ async function preheat(
     ha: {
       state: (entityId: string): string | null => stateMap.get(entityId) ?? null,
       entities: (domain: string): unknown[] => entityMap.get(domain) ?? [],
+      call: (toolName: string): string | null => callMap.get(toolName) ?? null,
     },
   };
 }
@@ -101,9 +155,10 @@ export async function renderActionTemplate(
   const out = env.renderString(template, ctx).trim();
   if (out.startsWith('{')) {
     try {
-      const parsed = JSON.parse(out) as { speech?: string; display?: AssistantResponse['display'] };
-      if (typeof parsed.speech === 'string') {
-        return { speech: parsed.speech, ...(parsed.display ? { display: parsed.display } : {}) };
+      const parsed = JSON.parse(out) as { speech?: unknown; display?: AssistantResponse['display'] };
+      const speech = unwrapSpeech(parsed.speech);
+      if (speech !== null) {
+        return { speech, ...(parsed.display ? { display: parsed.display } : {}) };
       }
     } catch {
       return { speech: out };
