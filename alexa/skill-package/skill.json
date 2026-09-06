@@ -3,8 +3,7 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "sourceDir": "lambda",
-          "uri": "VoiceAssist"
+          "sourceDir": "lambda"
         },
         "interfaces": []
       }
