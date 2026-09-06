@@ -15,7 +15,7 @@
       "category": "ORGANIZERS_AND_ASSISTANTS",
       "locales": {
         "de-DE": {
-          "description": "VoiceAssist verbindet Alexa mit lokalen Diensten und dem Smart Home.",
+          "description": "Voice Assist verbindet Alexa mit lokalen Diensten und dem Smart Home.",
           "examplePhrases": [
             "Alexa öffne Voice Assist",
             "Alexa frag Voice Assist wie der Hausstatus ist",
