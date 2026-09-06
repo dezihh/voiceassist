@@ -21,7 +21,9 @@ interface VoiceQuery {
 
 interface AssistantResponse {
   speech: string;            // für Sprachausgabe immer gesetzt
+  ssml?: boolean;            // true: speech enthält fertiges SSML (Passthrough)
   display?: DisplayPayload;  // optional, siehe DESIGN_DISPLAY.md
+  followUp?: boolean;        // true: Session offen halten (Rückfrage)
 }
 ```
 
@@ -30,6 +32,28 @@ Damit sind weitere Adapter möglich, ohne den Core anzufassen:
 
 Der Core kennt: Query, Session, User, Response, MCP, LLM, Actions –
 aber keine Alexa-Requests, Alexa-JSON-Strukturen oder Response Cards.
+
+## SSML: Verantwortung liegt beim Adapter
+
+Die Sprachausgabe braucht SSML (Erfahrung aus dem Vorgängerprojekt: ohne
+`<break>`-Pausen und `<say-as>`/`<sub>` für Einheiten und Zahlen klingt die
+Ausgabe schlecht bzw. wird falsch ausgesprochen). Der Grundsatz:
+
+- **Der Core arbeitet sprachneutral.** `AssistantResponse.speech` ist standardmäßig
+  Klartext. Enthält eine Quelle (z. B. HA-Skript) fertiges SSML, setzt der Core
+  `ssml: true` und reicht es unverändert durch – er strippt es nicht mehr.
+- **Der Adapter erzeugt bzw. validiert SSML.** Der Alexa-Adapter wrappt Klartext
+  selbst (inkl. XML-Escaping) zu `<speak>…</speak>`; bei `ssml: true` wird das
+  vorhandene SSML unverändert übernommen und maximal auf genau einen
+  `<speak>`-Wrapper normalisiert. **Kein Doppel-Wrapping, kein Escaping von
+  gültigem SSML** – beides führt zu Invalid-SSML-Fehlern auf Alexa-Seite.
+- **Envelopes werden unwrappt, nicht zerstört.** Alte HA-Skripte antworten mit
+  `{"speech": {"ssml": {"speech": "<speak>…"}}}` – der Template-Kontext extrahiert
+  das innere SSML und markiert es als solches. Für die Card (Display) wird SSML
+  zu Klartext bereinigt.
+
+Damit kann jede Quelle (Skript, Template, LLM) selbst entscheiden, ob sie
+Prosodie-Kontrolle über SSML braucht – ohne dass der Core Alexa-Details kennt.
 
 ## Pipeline
 
@@ -41,7 +65,7 @@ Router: Template-Action > Prompt-Action > Agent-Query (Default)
 Jinja + Kontext   LLM + festes Prompt    LLM frei mit MCP-Tools
   └────────────────┴───────────────────────┘
                     ▼
-        AssistantResponse { speech, display? }
+        AssistantResponse { speech, ssml?, display? }
 ```
 
 Routing-Details und Latenzbudgets: [DESIGN_WEBUI.md](DESIGN_WEBUI.md), [DESIGN_SKILL_RUNTIME.md](DESIGN_SKILL_RUNTIME.md).

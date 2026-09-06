@@ -15,6 +15,7 @@ export interface DisplayPayload {
 
 export interface AssistantResponse {
   speech: string;
+  ssml?: boolean;
   display?: DisplayPayload;
   followUp?: boolean;
 }

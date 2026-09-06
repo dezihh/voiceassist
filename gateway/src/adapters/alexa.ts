@@ -30,14 +30,33 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function stripSsml(text: string): string {
+  return text
+    .replace(/<speak>|<\/speak>/gi, '')
+    .replace(/<break[^>]*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function toSsml(resp: AssistantResponse): string {
+  if (resp.ssml) {
+    const s = resp.speech.trim();
+    return /^<speak[\s>]/i.test(s) ? s : `<speak>${s}</speak>`;
+  }
+  return `<speak>${escapeXml(resp.speech)}</speak>`;
+}
+
 export function fromAssistantResponse(resp: AssistantResponse): Record<string, unknown> {
-  const outputSpeech = { type: 'SSML', ssml: `<speak>${escapeXml(resp.speech)}</speak>` };
+  const ssml = toSsml(resp);
+  const outputSpeech = { type: 'SSML', ssml };
+  const cardText = resp.ssml ? stripSsml(resp.speech) : resp.speech;
   return {
     version: '1.0',
     sessionAttributes: {},
     response: {
       outputSpeech,
-      card: { type: 'Simple', title: 'VoiceAssist', content: resp.speech },
+      card: { type: 'Simple', title: 'VoiceAssist', content: cardText },
       reprompt: resp.followUp ? { outputSpeech } : undefined,
       shouldEndSession: !resp.followUp,
     },

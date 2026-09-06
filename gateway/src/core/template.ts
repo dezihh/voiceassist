@@ -61,26 +61,22 @@ function extractText(result: unknown): string {
   return String(result ?? '');
 }
 
-function stripSsml(text: string): string {
-  return text
-    .replace(/<speak>|<\/speak>/gi, '')
-    .replace(/<break[^>]*\/?>/gi, ' ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+interface UnwrappedSpeech {
+  text: string;
+  ssml: boolean;
 }
 
-function unwrapSpeech(value: unknown): string | null {
-  if (typeof value === 'string') return value;
+function unwrapSpeech(value: unknown): UnwrappedSpeech | null {
+  if (typeof value === 'string') return { text: value, ssml: false };
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>;
     const ssml = obj.ssml;
-    if (typeof ssml === 'string') return stripSsml(ssml);
+    if (typeof ssml === 'string') return { text: ssml, ssml: true };
     if (ssml && typeof ssml === 'object') {
       const inner = (ssml as Record<string, unknown>).speech;
-      if (typeof inner === 'string') return stripSsml(inner);
+      if (typeof inner === 'string') return { text: inner, ssml: true };
     }
-    if (typeof obj.speech === 'string') return obj.speech;
+    if (typeof obj.speech === 'string') return { text: obj.speech, ssml: false };
   }
   return null;
 }
@@ -153,12 +149,19 @@ export async function renderActionTemplate(
 ): Promise<AssistantResponse> {
   const ctx = await preheat(template, mcp, trace);
   const out = env.renderString(template, ctx).trim();
+  if (/^<speak[\s>]/i.test(out)) {
+    return { speech: out, ssml: true };
+  }
   if (out.startsWith('{')) {
     try {
       const parsed = JSON.parse(out) as { speech?: unknown; display?: AssistantResponse['display'] };
-      const speech = unwrapSpeech(parsed.speech);
-      if (speech !== null) {
-        return { speech, ...(parsed.display ? { display: parsed.display } : {}) };
+      const unwrapped = unwrapSpeech(parsed.speech);
+      if (unwrapped) {
+        return {
+          speech: unwrapped.text,
+          ...(unwrapped.ssml ? { ssml: true } : {}),
+          ...(parsed.display ? { display: parsed.display } : {}),
+        };
       }
     } catch {
       return { speech: out };
