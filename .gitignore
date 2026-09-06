@@ -1,0 +1,43 @@
+# --- Secrets / Credentials ---
+.env
+.env.*
+*.pem
+*.key
+secrets*
+credentials*
+!credentials.example*
+
+# --- AWS ---
+.aws/
+aws-*.json
+lambda_build/
+*.zip
+cdk.out/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+build/
+.vite/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# --- Projekt-Lokales ---
+llm_debug.log
+*.log
+inventory.md
+.inventory.llm.md
