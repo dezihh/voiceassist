@@ -18,6 +18,8 @@ voiceassist Gateway (lokal, Docker, Node.js + TypeScript)
   └─ Admin-Web-UI (LAN-only)
 ```
 
+Zentrale Architekturregeln (Adapter-Muster, Auth-/Berechtigungs-Ebenen, Datenmodell): [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)
+
 ## Features
 
 - **MCP-Integration:** Alexa-Anfragen werden von lokalen MCP-Servern beantwortet (HA, Suche, …)

@@ -2,6 +2,7 @@
 
 > Arbeitsdokument für die Design-Diskussion. Konkrete Entscheidungen werden als
 > Issue festgehalten (`design`-Label) und hier verlinkt.
+> Zentrale Architekturregeln: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Ziele
 
@@ -45,7 +46,10 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 | Admin-Frontend | **Vanilla HTML/CSS/JS** – kein SPA-Framework, kein Node-Frontend-Build |
 | Admin-Zugang | **LAN-only** (CIDR-Allowlist im Reverse-Proxy), kein zusätzlicher Login im MVP |
 | Such-MCP | **Bestehender SearXNG-MCP auf knx** wird angebunden, kein eigenes Hosting |
-| HA-MCP | **Community-Server** (z. B. als HA-Add-on, streamable-http) |
+| HA-MCP | **Offizielle HA-Integration** (`/api/mcp`), Long-Lived Access Token als Bearer; OAuth später (Issue #6) |
+| Client-Auth (POC) | **Statisches Shared Secret**, kein OAuth-Flow; Replay-Schutz später (Issue #5) – getrennte Ebene von MCP-Auth |
+| Persistenz | **SQLite** (`mcp_servers`, `actions`, `prompts`, `settings`), Credentials pragmatisch via `.env` |
+| Session-Schnittstelle | `sessionId`/`conversationId` ab POC in der internen API, State-Ausbau später (siehe ARCHITECTURE.md) |
 | Nachfragen | **Hybrid-Clarification**: LLM entscheidet, pro Action konfigurierbar, Budget 1–2 Rückfragen |
 | Display/Media | Stufe 1+2 (Text + Bilder) ins MVP, Video/Audio später → [DESIGN_DISPLAY.md](DESIGN_DISPLAY.md) |
 | Szenario 3 (Template-Action) | LLM-Zwischenschritt **pro Action konfigurierbar** (Standard: ohne LLM) |
@@ -57,9 +61,7 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 ## Offene Fragen
 
 - [ ] Detaillayout/-funktionen je Bereich (folgende Diskussionsrunde)
-- [ ] Persistenz der Konfiguration (Dateien YAML/JSON vs. SQLite)
 - [ ] Realtime für Logs/Traces (Polling vs. SSE)
-- [ ] Authentisierung Skill → Gateway: Bearer vs. HMAC (Replay-Schutz) final wählen
 
 ## Entscheidungen (Issues)
 
