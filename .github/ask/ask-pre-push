@@ -1,0 +1,117 @@
+#!/bin/bash
+# ask tools pre-push hook
+
+source ~/.ask/auth_info
+
+profile=$1
+skillId=$2
+locale=$3
+currentBranch=$4
+pushToUrl=$5
+configFile=~/.ask/cli_config
+if [ -f "${configFile}" ]; then
+    configOp="s/.*${profile}\":{\"token\":{\"[^{]*\",\"refresh_token\":\"\([^{]*\)\"/\1/p"
+    askRefreshToken=$(tr -d '\n' <  "${configFile}" | tr -d ' ' | sed -n "${configOp}" | sed 's/".*//')
+fi
+
+refreshToken="${ASK_REFRESH_TOKEN:-$askRefreshToken}"
+lwaAPI="${ASK_LWA_TOKEN_HOST:-$ask_lwa_api}"
+smapiAPI="${ASK_SMAPI_SERVER_BASE_URL:-$ask_smapi_api}"
+clientID="${ASK_LWA_CLIENT_ID:-$ask_client_id}"
+clientSecret="${ASK_LWA_CLIENT_CONFIRMATION:-$ask_client_confirmation}"
+
+token=$(curl -f -s -d grant_type=refresh_token -d client_id="${clientID}" -d client_secret="${clientSecret}" -d refresh_token="${refreshToken}" "${lwaAPI}"/auth/O2/token)
+accessToken=$(tr -d '\n'  <<< "${token}" | tr -d ' ' | sed 's/.*"access_token":"\([^{]*\)","refresh_token".*/\1/') 
+if [[ -z "${accessToken}" ]]; then
+    echo "Failed to fetch a LWA access token."
+    exit 1
+fi
+
+# verifyAlexaHostedRepo
+alexaHosted=$(curl -f -s -H "Authorization: Bearer ${accessToken}" "${smapiAPI}"/v1/skills/"${skillId}"/alexaHosted)
+repo=$(tr -d '\n'  <<< "${alexaHosted}" | tr -d ' ' | sed -n 's/.*"url":"\([^{]*\)"},"runtime".*/\1/p')
+if [[ -z "${repo}" ]]; then
+    echo "The Alexa-hosted skill is not found with id: ${skillId}."
+    exit 1
+fi
+[[ ! -z "${pushToUrl}" ]] && [[ "${repo}" != "${pushToUrl}" ]] && exit 0
+
+# checkBranch
+shouldCheckBranch=true
+
+if [[ "${currentBranch}" == "master" ]]; then 
+    expectedStage="development"
+elif [[ "${currentBranch}" == "prod" ]]; then
+    expectedStage="live"
+else
+    shouldCheckBranch=false
+fi
+
+if [[ "${shouldCheckBranch}" == false ]]
+then
+    msg1="Alexa-Hosted Skills can be deployed by performing a git push to the Alexa-Hosted remote master branch. "
+    msg2="Please use following git commands for deploying hosted skills:\n"
+    msg3="$ git checkout master\n$ git merge dev\n$ git push"
+    echo -e "${msg1}${msg2}${msg3}" && exit 1
+fi
+
+
+hasSkillManifest() {
+    response=$(curl -f -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${accessToken}" "${smapiAPI}"/v1/skills/"${skillId}"/stages/"${expectedStage}"/manifest)
+    if [[ 0 -eq $? ]]; then
+        [[ "${response}" == "200" ]] && return 0 || return 1
+    else
+        return 1
+    fi 
+}
+
+if ! hasSkillManifest 
+then
+    mainMsg="Unable to push to ${currentBranch} branch - "
+    if [[ "${currentBranch}" == "prod" ]]; then
+        extraMsg="${expectedStage} stage does not exist."
+    else 
+        extraMsg="make sure there is correct skillId in the .ask/ask-states.json file."
+    fi
+    echo  "${mainMsg}${extraMsg}"
+    exit 1 
+fi
+
+
+isInProgressCerts() {
+
+    nextToken=
+    inProgress=
+    while
+        if [[ -z "${nextToken}" ]]; then
+            response=$(curl -f -s -H "Authorization: Bearer ${accessToken}" -H "Content-type: application/json" "${smapiAPI}"/v1/skills/"${skillId}"/certifications)
+        else
+            response=$(curl -f -s -H "Authorization: Bearer ${accessToken}" -H "Content-type: application/json" -d next_token="${nextToken}"  "${smapiAPI}"/v1/skills/"${skillId}"/certifications)
+        fi
+        
+        if [[ 0 -eq $? ]]; then
+            if [[ "${response}" == *"No certifications found"* ]]; then
+                return 1
+            fi
+            nextToken=$(tr -d '\n'  <<< "${response}" | tr -d ' ' | sed -n 's/.*"nextToken":"\(.*\)".*/\1/p' | sed -n 's/".*//p')
+            inProgress=$(tr -d '\n'  <<< "${response}" | tr -d ' ' | sed -n 's/.*"status":"\(.*\)".*/\1/p' | sed -n 's/".*//p')
+        else
+            return 1
+        fi
+        [[ (! -z "${nextToken}" ) && ( -z "${inProgress}" )]]
+    do :; done
+
+    [ "${inProgress}" == "IN_PROGRESS" ] && return 0 || return 1
+}
+
+if isInProgressCerts
+then 
+    echo 'Your skill is in review. If you want to make any changes to the code, withdraw the skill from certification or publish to live.'
+    exit 1
+fi
+
+
+host="https://developer.amazon.com/alexa/console/ask/build/custom"
+consoleLink="${host}/${skillId}/${expectedStage}/${locale}"
+meg="After the code pushed, please check the deployment status\nvia Alexa Developer console:\n"
+echo -e "${meg}${consoleLink}"
