@@ -112,6 +112,13 @@ SQLite, bewusst klein:
 Credentials pragmatisch (`.env`/Env-Vars) – kein ausgefeiltes Secret-Management
 als POC-Blocker.
 
+## Externe Dienste
+
+| Dienst | Endpoint (konfigurierbar via `.env`) |
+|---|---|
+| LLM | LiteLLM **knx**: `<llm-base-url>` (OpenAI-kompatibel, `chat/completions`; z. B. Modell `chat-fast`/`chat-quality`; API-Key via Env) |
+| MCP (HA) | Offizielle HA-Integration `/api/mcp` (Streamable HTTP, Bearer-LLAT) |
+
 ## Conversation State
 
 Die interne API kennt ab POC `sessionId`/`conversationId`:
