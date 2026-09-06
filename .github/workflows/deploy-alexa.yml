@@ -40,8 +40,21 @@ jobs:
 
       - name: Add Alexa-hosted remote with credential helper
         run: |
-          REPO_URL="${{ secrets.ALEXA_HOSTED_REPO_URL }}"
           SKILL_ID="${{ secrets.ALEXA_SKILL_ID }}"
+
+          # LWA Access-Token aus den ASK-CLI-Dateien
+          source ~/.ask/auth_info
+          REFRESH=$(tr -d '\n' < ~/.ask/cli_config | tr -d ' ' | sed -n 's/.*"default":{[^{]*"token":{[^{]*"refresh_token":"\([^{]*\)"/\1/p')
+          TOKEN=$(curl -f -s -d grant_type=refresh_token -d client_id="${ask_client_id}" -d client_secret="${ask_client_confirmation}" -d refresh_token="${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(tr -d '\n' <<< "${TOKEN}" | tr -d ' ' | sed 's/.*"access_token":"\([^{]*\)","refresh_token".*/\1/')
+          if [[ -z "${ACCESS}" ]]; then echo "Kein LWA Access-Token erhalten"; exit 1; fi
+
+          # Alexa-hosted Repo-URL per SMAPI aufloesen
+          HOSTED=$(curl -f -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}"/v1/skills/"${SKILL_ID}"/alexaHosted)
+          REPO_URL=$(tr -d '\n' <<< "${HOSTED}" | tr -d ' ' | sed -n 's/.*"url":"\([^{]*\)"},"runtime".*/\1/p')
+          if [[ -z "${REPO_URL}" ]]; then echo "Alexa-hosted Repo fuer ${SKILL_ID} nicht gefunden"; exit 1; fi
+          echo "Repo-URL aufgeloest"
+
           git remote remove alexa 2>/dev/null || true
           git remote add alexa "${REPO_URL}"
           HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
