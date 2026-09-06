@@ -44,9 +44,10 @@ jobs:
 
           # LWA Access-Token aus den ASK-CLI-Dateien
           source ~/.ask/auth_info
-          REFRESH=$(tr -d '\n' < ~/.ask/cli_config | tr -d ' ' | sed -n 's/.*"default":{[^{]*"token":{[^{]*"refresh_token":"\([^{]*\)"/\1/p')
-          TOKEN=$(curl -f -s -d grant_type=refresh_token -d client_id="${ask_client_id}" -d client_secret="${ask_client_confirmation}" -d refresh_token="${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
-          ACCESS=$(tr -d '\n' <<< "${TOKEN}" | tr -d ' ' | sed 's/.*"access_token":"\([^{]*\)","refresh_token".*/\1/')
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
           if [[ -z "${ACCESS}" ]]; then echo "Kein LWA Access-Token erhalten"; exit 1; fi
 
           # Alexa-hosted Repo-URL per SMAPI aufloesen
