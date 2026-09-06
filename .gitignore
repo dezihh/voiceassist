@@ -41,3 +41,8 @@ llm_debug.log
 *.log
 inventory.md
 .inventory.llm.md
+
+# --- voiceassist ---
+gateway/data/
+alexa/.ask/
+.ask/

@@ -1,0 +1,33 @@
+{
+  "manifest": {
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "sourceDir": "lambda",
+          "uri": "VoiceAssist"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0",
+    "publishingInformation": {
+      "distributionCountries": [],
+      "isAvailableWorldwide": true,
+      "category": "ORGANIZERS_AND_ASSISTANTS",
+      "locales": {
+        "de-DE": {
+          "description": "VoiceAssist verbindet Alexa mit lokalen Diensten und dem Smart Home.",
+          "examplePhrases": [
+            "Alexa öffne Voice Assist",
+            "Alexa frag Voice Assist wie der Hausstatus ist",
+            "Alexa frag Voice Assist nach aktuellen Nachrichten"
+          ],
+          "keywords": [],
+          "name": "Voice Assist",
+          "summary": "Persönlicher Assistent mit lokaler Intelligenz"
+        }
+      },
+      "testingInstructions": "POC, intern"
+    }
+  }
+}

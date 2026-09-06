@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoiceAssist Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">VoiceAssist</div>
+      <nav id="nav">
+        <a data-tab="settings" class="active">Grundeinstellungen</a>
+        <a data-tab="monitor">Monitor / Test</a>
+        <a data-tab="actions">Vorgänge</a>
+        <a data-tab="mcp">MCP-Registry</a>
+        <a data-tab="logs">Logs</a>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <h1 id="tab-title">Grundeinstellungen</h1>
+        <div class="token-box">
+          <input id="token" type="password" placeholder="Admin-Token">
+          <button id="token-save" class="btn">Speichern</button>
+        </div>
+      </header>
+
+      <section id="tab-settings" class="tab active">
+        <div class="card">
+          <h2>Allgemein</h2>
+          <div id="settings-form" class="form-grid"></div>
+          <button id="settings-save" class="btn primary">Einstellungen speichern</button>
+        </div>
+        <div class="card">
+          <h2>Agent-Prompt</h2>
+          <label>Prompt-Schlüssel</label>
+          <select id="prompt-key"></select>
+          <label>Inhalt</label>
+          <textarea id="prompt-content" rows="8"></textarea>
+          <button id="prompt-save" class="btn primary">Prompt speichern</button>
+        </div>
+      </section>
+
+      <section id="tab-monitor" class="tab">
+        <div class="card">
+          <h2>Query simulieren</h2>
+          <div class="monitor-input">
+            <input id="test-text" type="text" placeholder="z. B. Wie ist der Hausstatus?">
+            <button id="test-send" class="btn primary">Senden</button>
+          </div>
+          <div id="test-result"></div>
+        </div>
+        <div class="card">
+          <h2>Trace</h2>
+          <ul id="test-trace" class="trace"></ul>
+        </div>
+      </section>
+
+      <section id="tab-actions" class="tab">
+        <div class="card">
+          <div class="toolbar">
+            <h2>Vorgänge</h2>
+            <button id="action-new" class="btn primary">Neu</button>
+          </div>
+          <table id="actions-table">
+            <thead><tr><th>Name</th><th>Modus</th><th>Trigger</th><th>Aktiv</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card hidden" id="action-editor">
+          <h2 id="action-editor-title">Vorgang bearbeiten</h2>
+          <input type="hidden" id="action-id">
+          <label>Name</label>
+          <input id="action-name" type="text">
+          <label>Modus</label>
+          <select id="action-mode">
+            <option value="deterministic">deterministisch (Template)</option>
+            <option value="llm">nur LLM</option>
+            <option value="hybrid">beides (Template + LLM)</option>
+          </select>
+          <label>Trigger-Phrasen (eine pro Zeile)</label>
+          <textarea id="action-triggers" rows="4"></textarea>
+          <label>Fuzzy-Schwellwert (0–1, leer = global 0.85)</label>
+          <input id="action-threshold" type="text">
+          <label>Eigenes System-Prompt (leer = Agent-Prompt)</label>
+          <textarea id="action-system" rows="4"></textarea>
+          <label>Template (deterministisch / hybrid)</label>
+          <textarea id="action-template" rows="10" placeholder="{{ ha.state('sensor.x') }}"></textarea>
+          <label>Erlaubte MCP-Tools (eins pro Zeile, leer = alle)</label>
+          <textarea id="action-tools" rows="4"></textarea>
+          <label class="check"><input id="action-enabled" type="checkbox" checked> Aktiv</label>
+          <div class="toolbar">
+            <button id="action-save" class="btn primary">Speichern</button>
+            <button id="action-delete" class="btn danger">Löschen</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-mcp" class="tab">
+        <div class="card">
+          <div class="toolbar">
+            <h2>MCP-Server</h2>
+            <button id="mcp-new" class="btn primary">Neu</button>
+          </div>
+          <table id="mcp-table">
+            <thead><tr><th>Name</th><th>URL</th><th>Aktiv</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card hidden" id="mcp-editor">
+          <h2 id="mcp-editor-title">MCP-Server bearbeiten</h2>
+          <input type="hidden" id="mcp-id">
+          <label>Name</label>
+          <input id="mcp-name" type="text">
+          <label>URL (Streamable HTTP)</label>
+          <input id="mcp-url" type="text" placeholder="https://<ha-host>/api/mcp">
+          <label>Bearer-Token (z. B. HA-LLAT, leer = keiner)</label>
+          <input id="mcp-token" type="password">
+          <label class="check"><input id="mcp-enabled" type="checkbox" checked> Aktiv</label>
+          <div class="toolbar">
+            <button id="mcp-save" class="btn primary">Speichern</button>
+            <button id="mcp-health" class="btn">Tools abfragen</button>
+            <button id="mcp-delete" class="btn danger">Löschen</button>
+          </div>
+          <div id="mcp-tools" class="tool-list"></div>
+        </div>
+      </section>
+
+      <section id="tab-logs" class="tab">
+        <div class="card">
+          <div class="toolbar">
+            <h2>Logs</h2>
+            <button id="logs-refresh" class="btn">Aktualisieren</button>
+          </div>
+          <table id="logs-table">
+            <thead><tr><th>Zeit</th><th>Route</th><th>Query</th><th>Antwort</th><th>Dauer</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "voiceassist-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VoiceAssist Gateway: Alexa-Adapter, Action-Routing, LLM- und MCP-Orchestrierung, Admin-UI",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "nunjucks": "^3.2.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.18.10",
+    "@types/nunjucks": "^3.2.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
