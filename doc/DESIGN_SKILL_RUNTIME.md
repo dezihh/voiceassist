@@ -6,10 +6,9 @@
 ## Grundlagen
 
 - Das Alexa-Antwortfenster von **~8 s** gilt unabhängig vom Hosting.
-- Der Unterschied zwischen den Wegen: Alexa-hosted ist **einfach zu managen**
-  (alles in einem Guss, kein eigenes AWS-Konto), eine eigene AWS-Lambda erlaubt
-  **Progressive Responses** mit erhöhtem Lambda-Timeout → deutlich längeres
-  effektives Fenster (~20–30 s, im Prototyp zu verifizieren).
+- **Progressive Responses** (Directives API) sind auch bei Alexa-hosted nutzbar
+  (Bestandsprojekt hat den Bestätigungston so gesendet) und verlängern das
+  effektive Fenster (~20–30 s, im Betrieb zu verifizieren).
 - Erfahrungswerte aus dem Bestandsprojekt: Timeout-Probleme sind die Ausnahme.
 
 ## Phase 1 (MVP): Alexa-hosted Skill
@@ -26,9 +25,12 @@
 | Agent-Query | volles Fenster | Tool-Iterations-Limit (z. B. max. 3), max_tokens begrenzt, schnelles Modell, parallele MCP-Calls |
 
 - **Graceful Timeout:** bei Überschreitung höfliche Fehlerantwort („Das hat leider zu lange gedauert…") + Log-Eintrag – die Logdaten sind die Entscheidungsgrundlage für Phase 2
-- **Warteton:** konfigurierbar (Phrase / SSML-Ton / aus), Default: Phrase.
-  Ob eine Progressive Response in Alexa-hosted nutzbar ist (harte Lambda-Timeout-Grenze),
-  **verifiziert der Prototyp**.
+- **Warteton-Watchdog (implementiert):** Gateway-Aufruf im Worker-Thread;
+  nach `watchdog_delay` (~6,5 s) ohne Antwort zweite Progressive Response
+  (Warteton-Phrase), danach Warten bis `gateway_timeout` (28 s). Konfiguration
+  über Lambda-Umgebungsvariablen (`warteton_enabled`, `warteton_phrase`,
+  `watchdog_delay`, `gateway_timeout`); Acknowledgment-Phrase bei t = 0 bleibt
+  separat (`acknowledgment_enabled`).
 
 ### Verifikationspunkte Prototyp
 
@@ -57,8 +59,9 @@ Graceful-Timeout-Quote über Schwelle). Dann:
 | Warteton-Modus | `phrase` (`phrase` / `tone` / `off`) | 1+2 |
 | Agent: max. Tool-Iterationen | 3 | 1+2 |
 | Agent: max_tokens | klein (Antwortlänge Sprache) | 1+2 |
-| Watchdog-Schwelle | ~6,5 s | 2 |
+| Watchdog-Schwelle | ~6,5 s | 1+2 (implementiert) |
 | Lambda-Timeout | 8 s (Alexa-hosted fix) | 2: erhöhen |
+| Gateway-Timeout (Lambda) | 28 s | 1+2 (implementiert) |
 
 ## Offene Fragen
 

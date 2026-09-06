@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import random
+import threading
 
 import requests
 import ask_sdk_core.utils as ask_utils
@@ -17,6 +18,11 @@ gateway_url = os.environ.get("gateway_url", "").rstrip("/")
 gateway_token = os.environ.get("gateway_token", "")
 acknowledgment_enabled = os.environ.get("acknowledgment_enabled", "false").lower() == "true"
 ask_for_further_commands = os.environ.get("ask_for_further_commands", "false").lower() == "true"
+warteton_enabled = os.environ.get("warteton_enabled", "true").lower() == "true"
+warteton_phrase = os.environ.get("warteton_phrase", "Einen Moment, ich schaue das kurz nach.")
+watchdog_delay = float(os.environ.get("watchdog_delay", "6.5"))
+gateway_timeout = float(os.environ.get("gateway_timeout", "28"))
+ALEXA_WINDOW = 8.0
 
 SPEAK_WELCOME = "Hallo, ich bin Ihr Voice-Assistent. Was kann ich für Sie tun?"
 SPEAK_HELP = "Sie können mir zum Beispiel nach dem Hausstatus oder aktuellen Informationen fragen."
@@ -36,7 +42,7 @@ def call_gateway(query, session_id, user_id):
     if user_id:
         data["userId"] = user_id
     response = requests.post(
-        "{}/api/query".format(gateway_url), headers=headers, json=data, timeout=20
+        "{}/api/query".format(gateway_url), headers=headers, json=data, timeout=gateway_timeout
     )
     response.raise_for_status()
     payload = response.json()
@@ -45,13 +51,13 @@ def call_gateway(query, session_id, user_id):
     return speech, follow_up
 
 
-def send_acknowledgment(handler_input, request):
+def send_progressive(handler_input, request, phrase):
     if not request.request_id:
         return
     try:
         directive_request = SendDirectiveRequest(
             header=Header(request_id=request.request_id),
-            directive=SpeakDirective(speech=SPEAK_PROCESSING),
+            directive=SpeakDirective(speech=phrase),
         )
         directive_service = handler_input.service_client_factory.get_directive_service()
         directive_service.enqueue(directive_request)
@@ -85,13 +91,34 @@ class GptQueryIntentHandler(AbstractRequestHandler):
         logger.info("Query empfangen: %s", query)
 
         if acknowledgment_enabled:
-            send_acknowledgment(handler_input, request)
+            send_progressive(handler_input, request, SPEAK_PROCESSING)
 
-        try:
-            speech, follow_up = call_gateway(query, session_id, user_id)
-        except Exception as e:
-            logger.error("Gateway-Fehler: %s", e, exc_info=True)
+        result = {}
+
+        def run():
+            try:
+                result["value"] = call_gateway(query, session_id, user_id)
+            except Exception as e:
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(watchdog_delay)
+        if worker.is_alive():
+            if warteton_enabled:
+                logger.info("Watchdog nach %.1fs ohne Gateway-Antwort, sende Warteton", watchdog_delay)
+                send_progressive(handler_input, request, warteton_phrase)
+                worker.join(max(0.0, gateway_timeout - watchdog_delay))
+            else:
+                worker.join(max(0.0, ALEXA_WINDOW - watchdog_delay))
+        if worker.is_alive():
+            logger.error("Gateway-Antwort %.1fs ueberschritten", gateway_timeout)
             return response_builder.speak(SPEAK_ERROR).set_should_end_session(True).response
+        if "error" in result:
+            logger.error("Gateway-Fehler: %s", result["error"], exc_info=True)
+            return response_builder.speak(SPEAK_ERROR).set_should_end_session(True).response
+
+        speech, follow_up = result["value"]
 
         keep_open = follow_up or ask_for_further_commands
         if keep_open:
