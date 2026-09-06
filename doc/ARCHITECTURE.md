@@ -105,7 +105,7 @@ SQLite, bewusst klein:
 | Tabelle | Inhalt |
 |---|---|
 | `mcp_servers` | MCP-Server-Registry (URL, Auth-Vermerk, Aktiv-Status) |
-| `actions` | Template-/Prompt-Actions inkl. Trigger, Templates, Flags |
+| `actions` | Vorgänge inkl. Trigger, Templates, `mode` (deterministic/llm/hybrid), Flags |
 | `prompts` | System-/Agent-Prompte |
 | `settings` | Laufzeit-Einstellungen (Warteton, Timeouts, Fuzzy global) |
 

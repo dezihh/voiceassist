@@ -11,15 +11,41 @@
 - Ein App-Container gemeinsam mit dem Gateway, getrennt via Sub-URL (`/voiceassist/admin/…`)
 - Portabel: Dev auf `hotel`, Prod-Umzug auf anderen Server – Host/Ports/Tokens nur via Config/`.env`
 
-## Skeleton-Struktur
+## Reiter-Konzept (Navigation)
 
-| # | Bereich | Kernaufgabe (vorläufig) | Status |
-|---|---|---|---|
-| 1 | Dashboard | Systemstatus: MCP-Server-Health, LLM-Erreichbarkeit, letzte Interaktionen | offen |
-| 2 | Actions-Editor | Prompt-Actions pflegen: Trigger-Phrasen, Anweisung an LLM, Tool-/MCP-Zugriff, deterministisches Ausgabetemplate, Clarification-Flag | offen |
-| 3 | MCP-Registry | Server-URLs, Tools, Health-Check, Enable/Disable | offen |
-| 4 | Test-Konsole | Alexa-Query simulieren, Trace der Pipeline (Router → MCP → LLM → Antwort) live sehen | offen |
-| 5 | Logs | Konversations- und Fehlerhistorie inkl. Nachfrage-Dialoge | offen |
+Die Oberfläche ist **reiterbasiert** aufgebaut – ein Reiter je Vorgang
+(2026-09-06, Diskussion):
+
+| Reiter | Inhalt | Status |
+|---|---|---|
+| **Grundeinstellungen** | System-/Agent-Prompte, Warteton (phrase/tone/off), Timeouts, Fuzzy-Matching global, Session-Verhalten | MVP |
+| **Monitor / Test-Tool** | Live-Trace der Pipeline (Router → MCP → LLM → Antwort), Query simulieren, Statistik (Latenzprofile je Szenario) – ersetzt Dashboard + Test-Konsole | MVP |
+| **Vorgang: Generisch (Agent)** | Der Default-Weg zum LLM: System-Prompt, Clarification-Budget, Tool-Iterations-Limit | MVP |
+| **Vorgang: je Action ein Reiter** | Flexibler Vorgang, pro Reiter konfigurierbar: **Modus** (deterministisch / nur LLM / beides), eigenes System-Prompt, Trigger-Phrasen + Fuzzy-Schwellwert, verwendete Tools/MCP-Server, Ausgabe-Template | MVP |
+| **MCP-Registry** | Server-URLs, Tools, Health-Check, Enable/Disable | MVP |
+| **Logs** | Konversations- und Fehlerhistorie inkl. Nachfrage-Dialoge | MVP |
+
+- Erlaubte MCP-Tools **je Vorgang** sind im Reiter definierbar – die feinere
+  Permissions-/Confirmations-Ebene folgt später (Issues #3/#4)
+- Die drei Szenarien werden damit zu **Konfigurationen eines einheitlichen
+  Action-Modells** mit `mode`-Feld (`deterministic` / `llm` / `hybrid`) statt
+  getrennter Typen; Routing-Priorität bleibt: deterministischer Treffer vor LLM
+
+## Style (zentraler Webserver knx)
+
+Die Admin-UI folgt dem **Style des zentralen Webservers auf knx** (`/dashui/`):
+
+- **Dash-UI Theme** (Bootstrap 5, codescandy/Dash-UI) im **Dark-Mode**
+- Basis-Hintergrund `#212b36`, Sidebar-Navigation, Feather-Icons
+- Theme-Assets **self-hosted** im Container (kein CDN), Custom-Overrides in
+  einer eigenen CSS-Datei (analog `dezi.css`)
+- bleibt Vanilla HTML/CSS/JS – Bootstrap/Dash-UI sind CSS/JS-Dateien, kein Build-Schritt
+
+## Entwicklung paralleler Umgang
+
+Die Web-Oberfläche wird **während der Entwicklung** mitgebaut (nicht als
+separater Schlussblock): Vorgänge, die im Gateway implementiert werden,
+sind direkt im UI konfigurierbar/testbar.
 
 ## Szenarien / Action-Typen & Routing
 
@@ -57,6 +83,9 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 | Warteton | **Konfigurierbar** (Phrase / SSML-Ton / aus), Default: Phrase |
 | Runtime-Phasing | **Phase 1: Alexa-hosted**, Phase 2 (Kontingenz): eigene AWS-Lambda → [DESIGN_SKILL_RUNTIME.md](DESIGN_SKILL_RUNTIME.md) |
 | Szenario 4 (Proaktiv/Geplant) | Zurückgestellt (Ausblick) |
+| UI-Navigation | **Reiter je Vorgang** (Grundeinstellungen, Monitor/Test, Generisch, je Action, MCP-Registry, Logs); einheitliches Action-Modell mit `mode`-Feld (deterministic/llm/hybrid) |
+| UI-Style | **Dash-UI Theme** (Bootstrap 5, Dark-Mode `#212b36`) wie zentraler Webserver knx, self-hosted Assets, Vanilla JS |
+| UI-Entwicklung | **Parallel zur Gateway-Entwicklung** (nicht separater Schlussblock) |
 
 ## Offene Fragen
 
