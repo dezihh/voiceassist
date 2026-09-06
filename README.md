@@ -1,8 +1,6 @@
 # voiceassist
 
-Sprachassistent-Plattform: Alexa steuert lokale **MCP-Services** – ohne direkte Home-Assistant-Kopplung im Skill. Home Assistant ist nur noch *ein* anbindbarer MCP-Server neben anderen (z. B. Websuche).
-
-Basierend auf den Erkenntnissen aus [HomeAssistantAssistAWS](https://github.com/dezihh/HomeAssistantAssistAWS) (dort: Alexa-Skill mit HA-Conversation-API und deterministischer Pyscript-Pipeline).
+Sprachassistent-Plattform: Alexa steuert lokale **MCP-Services** – erweiterbar um beliebige MCP-Server (z. B. Smart Home, Websuche), mit gelenkten Prompt-Actions und deterministischen Ausgaben.
 
 ## Architektur
 
@@ -13,7 +11,7 @@ Alexa (Echo-Geräte)
 AWS Lambda  ── Thin Adapter: Locale, SSML, APL, Session/Progressive Response
   │ HTTPS (Bearer/HMAC, Reverse-Proxy, Sub-URL)
   ▼
-voiceassist Gateway (lokal, Docker, FastAPI)
+voiceassist Gateway (lokal, Docker, Node.js + TypeScript)
   ├─ Router: gelenkte Prompt-Actions (deterministische Ausgaben, z. B. „Hausstatus“)
   ├─ MCP-Client(s): Home-Assistant-MCP, SearXNG-Such-MCP, weitere
   ├─ LLM-Orchestrierung via litellm (Tool-Calls über MCP)
@@ -40,11 +38,11 @@ voiceassist Gateway (lokal, Docker, FastAPI)
 ## Repository-Struktur (geplant)
 
 ```text
-lambda/          AWS Lambda: Alexa-Adapter (ask-sdk)
-gateway/         FastAPI-Gateway: Router, MCP-Clients, LLM-Orchestrierung
-admin-ui/        Admin-Weboberfläche (LAN-only)
+lambda/          AWS Lambda: Alexa-Adapter (ask-sdk, Python)
+gateway/         Gateway (Node.js + TypeScript): Router, MCP-Clients, LLM-Orchestrierung, Admin-API
+gateway/web/     Admin-Weboberfläche (vanilla HTML/CSS/JS, LAN-only)
 config/          Prompt-Actions, MCP-Registry (Beispiele)
-doc/             Design-Dokumente (DESIGN_WEBUI.md), Deployment
+doc/             Design-Dokumente (DESIGN_WEBUI.md, DESIGN_DISPLAY.md), Deployment
 ```
 
 ## Status
