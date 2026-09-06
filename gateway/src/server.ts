@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import { join } from 'node:path';
 import { config } from './config.js';
 import { requireAuth } from './auth.js';
@@ -102,7 +102,7 @@ app.post('/alexa', requireAuth, async (req, res) => {
   res.json(fromAssistantResponse(result.response));
 });
 
-app.post('/api/query', requireAuth, async (req, res) => {
+const handleQuery = async (req: Request, res: Response): Promise<void> => {
   const body = req.body as { sessionId?: string; userId?: string; text?: string };
   if (!body.text) {
     res.status(400).json({ error: 'text erforderlich' });
@@ -114,7 +114,10 @@ app.post('/api/query', requireAuth, async (req, res) => {
     text: body.text,
   });
   res.json(result);
-});
+};
+
+app.post('/api/query', requireAuth, handleQuery);
+app.post('/admin/api/query', requireAuth, handleQuery);
 
 app.get('/admin/api/bootstrap', requireAuth, (req, res) => {
   res.json({
