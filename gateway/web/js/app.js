@@ -144,13 +144,24 @@ function renderServers() {
   tbody.innerHTML = '';
   for (const s of bootstrap.servers) {
     const tr = document.createElement('tr');
+    const target = s.transport === 'stdio' ? `[stdio] ${s.command ?? ''}` : s.url;
     tr.innerHTML = `
       <td>${esc(s.name)}</td>
-      <td>${esc(s.url)}</td>
+      <td>${esc(target)}</td>
       <td>${s.enabled ? '✔' : '✖'}</td>
       <td class="actions"><button class="btn small">Bearbeiten</button></td>`;
     tr.querySelector('button').onclick = () => openServerEditor(s.id);
     tbody.append(tr);
+  }
+}
+
+function toggleMcpTransportFields(transport) {
+  const stdio = transport === 'stdio';
+  for (const id of ['mcp-url-label', 'mcp-url', 'mcp-token-label', 'mcp-token']) {
+    $(id).classList.toggle('hidden', stdio);
+  }
+  for (const id of ['mcp-command-label', 'mcp-command', 'mcp-args-label', 'mcp-args', 'mcp-env-label', 'mcp-env']) {
+    $(id).classList.toggle('hidden', !stdio);
   }
 }
 
@@ -160,19 +171,41 @@ function openServerEditor(id) {
   $('mcp-editor-title').textContent = s ? `MCP-Server: ${s.name}` : 'Neuer MCP-Server';
   $('mcp-id').value = s?.id ?? '';
   $('mcp-name').value = s?.name ?? '';
+  $('mcp-transport').value = s?.transport ?? 'http';
   $('mcp-url').value = s?.url ?? '';
   $('mcp-token').value = '';
+  $('mcp-command').value = s?.command ?? '';
+  let argsText = '';
+  let envText = '';
+  try { argsText = s?.args ? JSON.parse(s.args).join(', ') : ''; } catch { argsText = ''; }
+  try {
+    if (s?.env) {
+      envText = Object.entries(JSON.parse(s.env)).map(([k, v]) => `${k}=${v}`).join('\n');
+    }
+  } catch { envText = ''; }
+  $('mcp-args').value = argsText;
+  $('mcp-env').value = envText;
   $('mcp-enabled').checked = s ? !!s.enabled : true;
   $('mcp-tools').innerHTML = '';
+  toggleMcpTransportFields($('mcp-transport').value);
 }
 
 async function saveServer() {
+  const transport = $('mcp-transport').value;
   const payload = {
     name: $('mcp-name').value.trim(),
-    url: $('mcp-url').value.trim(),
+    transport,
     enabled: $('mcp-enabled').checked,
   };
-  if ($('mcp-token').value) payload.auth_token = $('mcp-token').value;
+  if (transport === 'stdio') {
+    payload.command = $('mcp-command').value.trim();
+    payload.args = $('mcp-args').value;
+    payload.env = $('mcp-env').value;
+    payload.url = '';
+  } else {
+    payload.url = $('mcp-url').value.trim();
+    if ($('mcp-token').value) payload.auth_token = $('mcp-token').value;
+  }
   const id = $('mcp-id').value;
   if (id) await api(`/mcp-servers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
   else await api('/mcp-servers', { method: 'POST', body: JSON.stringify(payload) });
@@ -278,10 +311,11 @@ function init() {
   $('action-new').onclick = () => openActionEditor(null);
   $('action-save').onclick = saveAction;
   $('action-delete').onclick = deleteActionUi;
-  $('mcp-new').onclick = () => openServerEditor(null);
-  $('mcp-save').onclick = saveServer;
-  $('mcp-health').onclick = healthServer;
-  $('mcp-delete').onclick = deleteServer;
+$('mcp-new').onclick = () => openServerEditor(null);
+$('mcp-save').onclick = saveServer;
+$('mcp-health').onclick = healthServer;
+$('mcp-delete').onclick = deleteServer;
+$('mcp-transport').onchange = () => toggleMcpTransportFields($('mcp-transport').value);
   $('logs-refresh').onclick = loadLogs;
   loadBootstrap();
 }

@@ -4,8 +4,7 @@ import { config } from './config.js';
 import { requireAuth } from './auth.js';
 import { processQuery } from './core/engine.js';
 import { fromAssistantResponse, toVoiceQuery } from './adapters/alexa.js';
-import { McpClient } from './mcp/client.js';
-import { invalidateMcpCache } from './mcp/registry.js';
+import { invalidateMcpCache, createClient } from './mcp/registry.js';
 import type { ActionMode } from './types.js';
 import {
   createAction,
@@ -51,12 +50,48 @@ function normalizeActionInput(body: Record<string, unknown>): ActionInput {
 
 function normalizeServerInput(body: Record<string, unknown>): McpServerInput {
   const name = String(body.name ?? '').trim();
-  const url = String(body.url ?? '').trim();
-  if (!name || !url) throw new Error('name und url sind erforderlich');
+  const transport = body.transport === 'stdio' ? 'stdio' : 'http';
+  let url = String(body.url ?? '').trim();
+  let command: string | null = null;
+  let args: string | null = null;
+  let env: string | null = null;
+  if (transport === 'stdio') {
+    command = String(body.command ?? '').trim();
+    if (!command) throw new Error('command ist für Transport stdio erforderlich');
+    if (!name) throw new Error('name ist erforderlich');
+    url = '';
+    const argsList = Array.isArray(body.args)
+      ? (body.args as unknown[]).map(String)
+      : String(body.args ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+    args = JSON.stringify(argsList);
+    const envObj: Record<string, string> = {};
+    const envRaw = body.env;
+    const entries: [string, string][] =
+      envRaw && typeof envRaw === 'object' && !Array.isArray(envRaw)
+        ? Object.entries(envRaw as Record<string, unknown>).map(([k, v]) => [k, String(v)])
+        : String(envRaw ?? '')
+            .split('\n')
+            .map((line) => {
+              const i = line.indexOf('=');
+              return i > 0 ? ([line.slice(0, i).trim(), line.slice(i + 1).trim()] as [string, string]) : null;
+            })
+            .filter((e): e is [string, string] => e !== null);
+    for (const [k, v] of entries) if (k) envObj[k] = v;
+    env = JSON.stringify(envObj);
+  } else if (!url || !name) {
+    throw new Error('name und url sind erforderlich');
+  }
   return {
     name,
     url,
     auth_token: body.auth_token ? String(body.auth_token) : null,
+    transport,
+    command,
+    args,
+    env,
     enabled: body.enabled === false ? 0 : 1,
   };
 }
@@ -157,9 +192,10 @@ app.post('/admin/api/mcp-servers/:id/health', requireAuth, async (req, res) => {
     return;
   }
   try {
-    const client = new McpClient(server.url, server.auth_token);
+    const client = createClient(server);
     await client.init();
     const tools = await client.listTools();
+    if (typeof client.stop === 'function') client.stop();
     res.json({ ok: true, tools: tools.map((t) => t.name) });
   } catch (e) {
     res.json({ ok: false, error: String(e) });

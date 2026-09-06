@@ -1,6 +1,13 @@
 import type { ToolDef } from '../types.js';
 
-export class McpClient {
+export interface McpTransport {
+  init(): Promise<void>;
+  listTools(): Promise<ToolDef[]>;
+  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  stop?(): void;
+}
+
+export class McpClient implements McpTransport {
   private nextId = 1;
   private sessionId: string | null = null;
 

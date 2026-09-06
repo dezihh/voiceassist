@@ -16,6 +16,10 @@ db.exec(`
     name TEXT NOT NULL UNIQUE,
     url TEXT NOT NULL,
     auth_token TEXT,
+    transport TEXT NOT NULL DEFAULT 'http',
+    command TEXT,
+    args TEXT,
+    env TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -58,6 +62,19 @@ db.exec(`
     trace TEXT
   );
 `);
+
+for (const stmt of [
+  "ALTER TABLE mcp_servers ADD COLUMN transport TEXT NOT NULL DEFAULT 'http'",
+  'ALTER TABLE mcp_servers ADD COLUMN command TEXT',
+  'ALTER TABLE mcp_servers ADD COLUMN args TEXT',
+  'ALTER TABLE mcp_servers ADD COLUMN env TEXT',
+]) {
+  try {
+    db.exec(stmt);
+  } catch {
+    // Spalte existiert bereits
+  }
+}
 
 db.prepare(
   'INSERT OR IGNORE INTO prompts (key, content) VALUES (?, ?)'
@@ -132,6 +149,10 @@ export interface McpServerInput {
   name: string;
   url: string;
   auth_token: string | null;
+  transport: 'http' | 'stdio';
+  command: string | null;
+  args: string | null;
+  env: string | null;
   enabled: number;
 }
 
@@ -147,14 +168,18 @@ export function getMcpServer(id: number): McpServerRow | undefined {
 
 export function createMcpServer(data: McpServerInput): McpServerRow {
   const info = db
-    .prepare('INSERT INTO mcp_servers (name, url, auth_token, enabled) VALUES (@name, @url, @auth_token, @enabled)')
+    .prepare(
+      `INSERT INTO mcp_servers (name, url, auth_token, transport, command, args, env, enabled)
+       VALUES (@name, @url, @auth_token, @transport, @command, @args, @env, @enabled)`
+    )
     .run(data);
   return getMcpServer(Number(info.lastInsertRowid)) as McpServerRow;
 }
 
 export function updateMcpServer(id: number, data: McpServerInput): McpServerRow | undefined {
   db.prepare(
-    'UPDATE mcp_servers SET name = @name, url = @url, auth_token = @auth_token, enabled = @enabled WHERE id = @id'
+    `UPDATE mcp_servers SET name = @name, url = @url, auth_token = @auth_token, transport = @transport,
+     command = @command, args = @args, env = @env, enabled = @enabled WHERE id = @id`
   ).run({ ...data, id });
   return getMcpServer(id);
 }

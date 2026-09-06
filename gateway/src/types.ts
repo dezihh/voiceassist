@@ -42,6 +42,10 @@ export interface McpServerRow {
   name: string;
   url: string;
   auth_token: string | null;
+  transport: 'http' | 'stdio';
+  command: string | null;
+  args: string | null;
+  env: string | null;
   enabled: number;
 }
 
