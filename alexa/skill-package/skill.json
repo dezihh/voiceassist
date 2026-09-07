@@ -27,6 +27,16 @@
         }
       },
       "testingInstructions": "POC, intern"
+    },
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "locales": {
+        "de-DE": {}
+      }
     }
   }
 }
