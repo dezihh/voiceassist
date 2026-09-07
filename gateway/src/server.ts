@@ -119,6 +119,19 @@ const handleQuery = async (req: Request, res: Response): Promise<void> => {
 app.post('/api/query', requireAuth, handleQuery);
 app.post('/admin/api/query', requireAuth, handleQuery);
 
+app.post('/admin/api/lambda-trace', requireAuth, (req, res) => {
+  const body = req.body as { sessionId?: string; event?: string; elapsedMs?: number; note?: string };
+  addLog({
+    sessionId: body.sessionId ?? 'lambda',
+    query: JSON.stringify(body),
+    route: `lambda-trace:${body.event ?? '?'}`,
+    response: '',
+    durationMs: Number(body.elapsedMs ?? 0),
+    trace: [],
+  });
+  res.status(204).end();
+});
+
 app.get('/admin/api/bootstrap', requireAuth, (req, res) => {
   res.json({
     settings: getSettings(),

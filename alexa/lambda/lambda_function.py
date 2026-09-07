@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import threading
+import time
 
 import requests
 import ask_sdk_core.utils as ask_utils
@@ -85,6 +86,28 @@ def send_progressive(handler_input, request, phrase):
         logger.warning("Progressive Response fehlgeschlagen: %s", e)
 
 
+def lambda_trace(session_id, event, elapsed_ms=None):
+    """Fire-and-forget: Lambda-Lebenszyklus ins Gateway-Log (CloudWatch-Ersatz)."""
+    if not gateway_url:
+        return
+
+    def run():
+        try:
+            requests.post(
+                "{}/admin/api/lambda-trace".format(gateway_url),
+                headers={
+                    "Authorization": "Bearer {}".format(gateway_token),
+                    "Content-Type": "application/json",
+                },
+                json={"sessionId": session_id, "event": event, "elapsedMs": elapsed_ms},
+                timeout=2,
+            )
+        except Exception as e:
+            logger.warning("lambda-trace fehlgeschlagen: %s", e)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 class LaunchRequestHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return ask_utils.is_request_type("LaunchRequest")(handler_input)
@@ -109,6 +132,8 @@ class GptQueryIntentHandler(AbstractRequestHandler):
             user_id = session.user.user_id
 
         logger.info("Query empfangen: %s", query)
+        trace_start = time.monotonic()
+        lambda_trace(session_id, "invoke", 0)
 
         if acknowledgment_enabled:
             send_progressive(handler_input, request, SPEAK_PROCESSING)
@@ -146,6 +171,7 @@ class GptQueryIntentHandler(AbstractRequestHandler):
         )
 
         keep_open = follow_up or ask_for_further_commands
+        lambda_trace(session_id, "response_sent", int((time.monotonic() - trace_start) * 1000))
         # ask-sdk speak() wrappt in <speak> und trimmt vorhandenen Wrapper;
         # Klartext muss XML-escaped werden (SSML aus dem Gateway nicht)
         response_builder.speak(escape(speech) if not is_ssml else speech)
