@@ -32,6 +32,9 @@ jobs:
           curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/interactionModel/locales/de-DE" | python3 -c 'import json,sys; d=json.load(sys.stdin); lm=d.get("interactionModel",{}).get("languageModel",{}); print("invocationName:", repr(lm.get("invocationName"))); [print("intent", i["name"], "samples:", json.dumps(i.get("samples",[]), ensure_ascii=False)) for i in lm.get("intents",[]) if i["name"] in ("GptQueryIntent","AMAZON.FallbackIntent")]'
           echo "=== Manifest-Endpoint (development):"
           curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get("manifest",{}).get("apis",{}), ensure_ascii=False))'
+          echo "=== Manifest-Build-Status (resource=manifest):"
+          curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/status?resource=manifest" | head -c 2500
+          echo ""
 
       - name: Alexa-Repo-Baum pruefen (requirements.txt + lambda/)
         env:
