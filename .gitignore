@@ -46,4 +46,5 @@ inventory.md
 # --- voiceassist ---
 gateway/data/
 alexa/.ask/
+alexa/lambda/config.json
 .ask/

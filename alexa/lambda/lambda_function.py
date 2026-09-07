@@ -14,6 +14,22 @@ from ask_sdk_model.services.directive import SendDirectiveRequest, Header, Speak
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if os.environ.get("debug") else logging.INFO)
 
+
+def load_config():
+    """Optionale config.json aus dem Lambda-Verzeichnis (nur im Alexa-Repo,
+    wird von der CI erhalten). Env-Variablen haben Vorrang."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    try:
+        with open(path) as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return
+    for key, value in cfg.items():
+        os.environ.setdefault(key, str(value))
+
+
+load_config()
+
 gateway_url = os.environ.get("gateway_url", "").rstrip("/")
 gateway_token = os.environ.get("gateway_token", "")
 acknowledgment_enabled = os.environ.get("acknowledgment_enabled", "false").lower() == "true"

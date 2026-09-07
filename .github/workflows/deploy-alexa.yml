@@ -63,6 +63,16 @@ jobs:
           git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
           git config "credential.https://${HOST_PATH}".UseHttpPath true
 
+      - name: lambda/config.json aus Alexa-Repo erhalten (Nutzer-Konfiguration)
+        run: |
+          if git fetch alexa master && git checkout alexa/master -- lambda/config.json; then
+            git add lambda/config.json
+            git commit --amend --no-edit
+            echo "config.json aus Alexa-Repo uebernommen"
+          else
+            echo "keine config.json im Alexa-Repo (Bootstrap noch offen)"
+          fi
+
       - name: Push to Alexa-hosted (master = development, dev = Konsole-Sync)
         run: |
           git push --no-verify --force alexa alexa-deploy:master alexa-deploy:dev
