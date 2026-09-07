@@ -65,13 +65,21 @@ jobs:
 
       - name: lambda/config.json aus Alexa-Repo erhalten (Pflicht)
         run: |
-          git fetch alexa master dev
-          if git checkout alexa/master -- lambda/config.json 2>/dev/null || git checkout alexa/dev -- lambda/config.json; then
+          git fetch alexa '+refs/heads/*:refs/remotes/alexa/*' --prune
+          echo "Branches im Alexa-Repo:"
+          git branch -r --format '%(refname:short)' | grep '^alexa/' || true
+          SRC=$(git branch -r --format '%(refname:short)' | grep '^alexa/' | while read -r b; do
+            if git cat-file -e "$b:lambda/config.json" 2>/dev/null; then echo "$b"; break; fi
+          done)
+          if [ -n "$SRC" ]; then
+            git checkout "$SRC" -- lambda/config.json
             git add lambda/config.json
             git commit --amend --no-edit
-            echo "config.json aus Alexa-Repo uebernommen"
+            echo "config.json aus ${SRC} uebernommen"
           else
-            echo "::error::lambda/config.json weder im Alexa-master noch -dev gefunden. Bootstrap in der Konsole noetig - Deploy abgebrochen, um die Konfiguration nicht zu loeschen."
+            echo "::error::lambda/config.json in keinem Branch des Alexa-Repo gefunden - Deploy abgebrochen, um die Konfiguration nicht zu loeschen."
+            echo "lambda-Dateien auf alexa/master:"
+            git ls-tree -r --name-only alexa/master 2>/dev/null | grep '^lambda/' | head -10 || true
             exit 1
           fi
 
