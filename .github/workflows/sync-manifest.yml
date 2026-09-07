@@ -23,8 +23,8 @@ jobs:
         env:
           SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
         run: |
-          sed "s#__ALEXA_ENDPOINT__#${{ secrets.ALEXA_ENDPOINT_URI }}#g" alexa/skill-package/skill.json > /tmp/manifest.json
-          if grep -q '__ALEXA_ENDPOINT__' /tmp/manifest.json; then echo "::error::Platzhaelter nicht substituiert - Secret ALEXA_ENDPOINT_URI leer?"; exit 1; fi
+          sed -e "s#__ALEXA_ENDPOINT__#${{ secrets.ALEXA_ENDPOINT_URI }}#g" -e "s#__ALEXA_PRIVACY_URL__#${{ secrets.ALEXA_PRIVACY_URL }}#g" alexa/skill-package/skill.json > /tmp/manifest.json
+          if grep -q '__ALEXA_ENDPOINT__\|__ALEXA_PRIVACY_URL__' /tmp/manifest.json; then echo "::error::Platzhaelter nicht substituiert - Secrets ALEXA_ENDPOINT_URI / ALEXA_PRIVACY_URL leer?"; exit 1; fi
           echo "=== Endpoint im Manifest:"
           grep -A2 '"endpoint"' /tmp/manifest.json
           source ~/.ask/auth_info

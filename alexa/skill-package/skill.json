@@ -35,7 +35,9 @@
       "isExportCompliant": true,
       "containsAds": false,
       "locales": {
-        "de-DE": {}
+        "de-DE": {
+          "privacyPolicyUrl": "__ALEXA_PRIVACY_URL__"
+        }
       }
     }
   }

@@ -129,6 +129,14 @@ async function sendProgressiveDirective(
   }
 }
 
+app.get('/privacy', (req, res) => {
+  res
+    .type('html')
+    .send(
+      '<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Datenschutz – Voice Assist</title></head><body><h1>Datenschutz – Voice Assist</h1><p>Der Skill &bdquo;Voice Assist&ldquo; verarbeitet Sprachanfragen ausschlie&szlig;lich zur Beantwortung der Anfrage. Es werden keine Sprachdaten dauerhaft gespeichert und keine Daten an Dritte weitergegeben. Der Betrieb erfolgt privat im eigenen Netzwerk des Betreibers.</p><p>Bei Fragen wenden Sie sich an den Betreiber des Skills.</p></body></html>'
+    );
+});
+
 app.post('/alexa', async (req, res) => {
   const body = req.body as {
     context?: {
