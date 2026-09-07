@@ -35,7 +35,8 @@ jobs:
           ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
           BODY=$(python3 -c 'import json,os;print(json.dumps({"input":{"utterance":os.environ["UTTERANCE"]}}))')
           SIM=$(curl -s -X POST -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -d "${BODY}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/simulations")
-          SID=$(echo "${SIM}" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("id",""))')
+          echo "SIM-RAW: ${SIM}"
+          SID=$(echo "${SIM}" | python3 -c 'import json,sys; s=sys.stdin.read(); print(json.loads(s).get("id","") if s.strip().startswith("{") else "")') || true
           echo "SIM-ID: ${SID}"
           [ -z "${SID}" ] && { echo "${SIM}"; exit 1; }
           for i in $(seq 1 12); do
