@@ -41,7 +41,13 @@
           "erkläre mir {query}",
           "ich möchte wissen {query}",
           "stell eine Frage zu {query}",
-          "was weißt du über {query}"
+          "was weißt du über {query}",
+          "was gibt es neues zu {query}",
+          "was gibt es neues zum thema {query}",
+          "was gibt es neues über {query}",
+          "gibt es neues zu {query}",
+          "gibt es neuigkeiten über {query}",
+          "erzähl mir etwas über {query}"
         ]
         }
       ],
