@@ -136,14 +136,28 @@ app.post('/alexa', async (req, res) => {
     request?: { requestId?: string; type?: string; intent?: { name?: string } };
   };
   const appId = body.context?.System?.application?.applicationId;
+  const reqType = body.request?.type ?? '';
+  const intentName =
+    (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
+
+  addLog({
+    sessionId: (body as { session?: { sessionId?: string } }).session?.sessionId ?? 'alexa',
+    query: JSON.stringify({
+      type: reqType,
+      intent: intentName,
+      appId: appId ? 'set' : 'fehlt',
+      skillMatch: appId === config.alexaSkillId,
+    }),
+    route: `alexa:${reqType || intentName || '?'}`,
+    response: '',
+    durationMs: 0,
+    trace: [],
+  });
+
   if (config.alexaSkillId && appId !== config.alexaSkillId) {
     res.status(403).json({ reason: 'Unerwartete applicationId' });
     return;
   }
-
-  const reqType = body.request?.type ?? '';
-  const intentName =
-    (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
 
   // Fast-Paths: einfache Requests ohne Engine-Aufruf (kein LLM-Turn, keine Kosten)
   if (reqType === 'SessionEndedRequest') {
