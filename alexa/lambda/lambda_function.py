@@ -140,6 +140,11 @@ class GptQueryIntentHandler(AbstractRequestHandler):
 
         speech, follow_up, is_ssml = result["value"]
 
+        logger.info(
+            "Gateway-Antwort: %d Zeichen, ssml=%s, followUp=%s, ANFANG=%r, ENDE=%r",
+            len(speech), is_ssml, follow_up, speech[:40], speech[-40:],
+        )
+
         keep_open = follow_up or ask_for_further_commands
         # ask-sdk speak() wrappt in <speak> und trimmt vorhandenen Wrapper;
         # Klartext muss XML-escaped werden (SSML aus dem Gateway nicht)
