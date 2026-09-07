@@ -33,9 +33,13 @@
           "sag mir {query}",
           "gib mir {query}",
           "frage {query}",
+          "frage mich {query}",
           "frage nach {query}",
           "nach {query}",
           "über {query}",
+          "beantworte {query}",
+          "erkläre mir {query}",
+          "ich möchte wissen {query}",
           "stell eine Frage zu {query}",
           "was weißt du über {query}"
         ]
