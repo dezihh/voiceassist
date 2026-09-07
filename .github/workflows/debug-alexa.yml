@@ -53,12 +53,6 @@ jobs:
             echo "--- GptQueryIntent-Samples:"
             for f in $(git ls-tree -r --name-only "$b" | grep -i 'interactionModels/'); do
               echo "  [$f]"
-              git show "$b:$f" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-for i in d["interactionModel"]["languageModel"]["intents"]:
-    if i["name"] == "GptQueryIntent":
-        print("   ", json.dumps(i["samples"], ensure_ascii=False))
-'
+              git show "$b:$f" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("   ", json.dumps([i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"], ensure_ascii=False))'
             done
           done
