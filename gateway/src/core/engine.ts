@@ -53,12 +53,18 @@ function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantRespon
   if (text.startsWith('{')) {
     try {
       const parsed = JSON.parse(text) as { needs_clarification?: boolean; speech?: string };
-      if (typeof parsed.speech === 'string') {
+      if (typeof parsed.speech === 'string' && parsed.speech.trim().length > 0) {
         return { speech: parsed.speech, followUp: parsed.needs_clarification === true };
       }
+      trace.push({ ts: Date.now(), step: 'agent.empty_speech' });
+      return { speech: 'Entschuldigung, dazu habe ich gerade nichts gefunden.' };
     } catch {
       trace.push({ ts: Date.now(), step: 'agent.json_parse_error' });
     }
+  }
+  if (text.length === 0) {
+    trace.push({ ts: Date.now(), step: 'agent.empty_content' });
+    return { speech: 'Entschuldigung, dazu habe ich gerade nichts gefunden.' };
   }
   return { speech: text };
 }
@@ -87,6 +93,9 @@ async function runToolLoop(
         const route = routes.get(call.function.name);
         if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
         const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
+        if (typeof args.num_results === 'number' && args.num_results > 3) {
+          args.num_results = 3;
+        }
         const out = await route.client.callTool(route.toolName, args);
         result = JSON.stringify(out).slice(0, 4000);
         trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });

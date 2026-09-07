@@ -29,6 +29,9 @@ export async function chatCompletion(
     body.tools = tools;
     body.tool_choice = 'auto';
   }
+  if (config.llm.reasoningEffort) {
+    body.reasoning_effort = config.llm.reasoningEffort;
+  }
   const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
