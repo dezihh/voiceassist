@@ -23,6 +23,7 @@ export async function chatCompletion(
   const body: Record<string, unknown> = {
     model: config.llm.model,
     messages,
+    max_tokens: config.llm.maxTokens,
   };
   if (tools && tools.length > 0) {
     body.tools = tools;
