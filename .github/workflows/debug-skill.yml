@@ -50,6 +50,10 @@ jobs:
           git config "credential.https://${HOST_PATH}".UseHttpPath true
           git remote add alexa "${REPO_URL}" 2>/dev/null || true
           git fetch alexa '+refs/heads/*:refs/remotes/alexa/*'
+          echo "=== skill.json endpoint auf alexa/master:"
+          git show alexa/master:skill-package/skill.json 2>&1 | grep -A3 '"endpoint"' || echo "FEHLT"
+          echo "=== skill.json endpoint auf alexa/dev:"
+          git show alexa/dev:skill-package/skill.json 2>&1 | grep -A3 '"endpoint"' || echo "FEHLT"
           echo "=== requirements.txt auf alexa/master:"
           git show alexa/master:lambda/requirements.txt 2>&1 || echo "FEHLT"
           echo "=== requirements.txt auf alexa/dev:"
