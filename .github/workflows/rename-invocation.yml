@@ -1,0 +1,54 @@
+name: Rename Invocation (SMAPI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Neuer invocationName (leer = zurueck auf 'voice assist')"
+        default: "voice assist zwei"
+      restore:
+        description: "'true' = auf 'voice assist' zuruecksetzen (Name wird ignoriert)"
+        default: "false"
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore ASK CLI auth files
+        run: |
+          mkdir -p ~/.ask/scripts
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+
+      - name: Invocation-Name setzen
+        env:
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          NEW_NAME: ${{ github.event.inputs.name }}
+          RESTORE: ${{ github.event.inputs.restore }}
+        run: |
+          set -e
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          if [ -z "${ACCESS}" ]; then echo "Kein LWA Token"; exit 1; fi
+          BASE="${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/interactionModel/locales/de-DE"
+          echo "=== Aktuelles Modell holen:"
+          HTTP=$(curl -s -D /tmp/h.txt -o /tmp/model.json -w "%{http_code}" -H "Authorization: Bearer ${ACCESS}" "${BASE}")
+          echo "GET -> HTTP ${HTTP}"
+          ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
+          TARGET="${NEW_NAME}"
+          if [ "${RESTORE}" = "true" ]; then TARGET="voice assist"; fi
+          echo "=== Setze invocationName -> '${TARGET}'"
+          export TARGET
+          python3 -c "import json,os; d=json.load(open('/tmp/model.json')); d['interactionModel']['languageModel']['invocationName']=os.environ['TARGET']; json.dump(d,open('/tmp/model_new.json','w'),ensure_ascii=False)"
+          HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -H "If-Match: ${ETAG}" --data-binary @/tmp/model_new.json "${BASE}")
+          echo "PUT -> HTTP ${HTTP}"; cat /tmp/put.json; echo ""
+          echo "=== Warte auf Build:"
+          for i in $(seq 1 18); do
+            sleep 10
+            S=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/status?resource=interactionModel" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['interactionModel']['de-DE']['lastUpdateRequest']['status'])" 2>/dev/null || echo "?")
+            echo "poll ${i}: ${S}"
+            if [ "${S}" = "SUCCEEDED" ] || [ "${S}" = "FAILURE" ]; then break; fi
+          done
+          curl -s -H "Authorization: Bearer ${ACCESS}" "${BASE}" | python3 -c 'import json,sys;print("invocationName jetzt:", json.load(sys.stdin)["interactionModel"]["languageModel"]["invocationName"])'
