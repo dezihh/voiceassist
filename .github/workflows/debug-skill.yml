@@ -43,7 +43,8 @@ jobs:
           source ~/.ask/auth_info
           REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
           export ASK_REFRESH_TOKEN="${REFRESH}"
-          REPO_URL="https://git-codecommit.us-east-1.amazonaws.com/v1/repos/${SKILL_ID}"
+          REPO_ID="${SKILL_ID#amzn1.ask.skill.}"
+          REPO_URL="https://git-codecommit.us-east-1.amazonaws.com/v1/repos/${REPO_ID}"
           HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
           git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
           git config "credential.https://${HOST_PATH}".UseHttpPath true
