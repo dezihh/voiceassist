@@ -1,0 +1,67 @@
+name: Sync Interaction Model (SMAPI)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore ASK CLI auth files
+        run: |
+          mkdir -p ~/.ask/scripts
+          cp .github/ask/git-credential-helper ~/.ask/scripts/git-credential-helper
+          cp .github/ask/ask-pre-push ~/.ask/scripts/ask-pre-push
+          chmod +x ~/.ask/scripts/git-credential-helper ~/.ask/scripts/ask-pre-push
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+
+      - name: Model-Stand pruefen, synchronisieren, bauen
+        env:
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+        run: |
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          BASE="${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/interactionModel/locales/de-DE"
+          MODEL=alexa/skill-package/interactionModels/custom/de-DE.json
+
+          echo "=== Aktuelles Modell im development-Stage (GptQueryIntent):"
+          HTTP=$(curl -s -D /tmp/h.txt -o /tmp/current.json -w "%{http_code}" -H "Authorization: Bearer ${ACCESS}" "${BASE}")
+          echo "GET -> HTTP ${HTTP}"
+          if [ "${HTTP}" = "200" ]; then
+            python3 -c 'import json; d=json.load(open("/tmp/current.json")); print(json.dumps([i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"], ensure_ascii=False))'
+            ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
+            echo "eTag: ${ETAG}"
+          else
+            cat /tmp/current.json; echo ""
+            ETAG=""
+          fi
+
+          echo "=== Sauberes Modell per PUT hochladen:"
+          if [ -n "${ETAG}" ]; then
+            HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -H "If-Match: ${ETAG}" --data-binary @${MODEL} "${BASE}")
+          else
+            HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" --data-binary @${MODEL} "${BASE}")
+          fi
+          echo "PUT -> HTTP ${HTTP}"; cat /tmp/put.json; echo ""
+
+          echo "=== Build triggern:"
+          curl -s -X POST -H "Authorization: Bearer ${ACCESS}" "${BASE}/build" | head -c 500; echo ""
+
+          echo "=== Build-Status pollen:"
+          for i in $(seq 1 12); do
+            sleep 5
+            STATUS=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${BASE}/build")
+            S=$(echo "${STATUS}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","?"))')
+            echo "  poll $i: ${S}"
+            if [ "${S}" = "SUCCEEDED" ] || [ "${S}" = "FAILURE" ]; then
+              echo "${STATUS}" | head -c 1500; echo ""
+              break
+            fi
+          done
