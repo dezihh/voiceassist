@@ -10,6 +10,7 @@ from ask_sdk_core.skill_builder import CustomSkillBuilder
 from ask_sdk_core.api_client import DefaultApiClient
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_model.services.directive import SendDirectiveRequest, Header, SpeakDirective
+from xml.sax.saxutils import escape
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if os.environ.get("debug") else logging.INFO)
@@ -62,9 +63,12 @@ def call_gateway(query, session_id, user_id):
     )
     response.raise_for_status()
     payload = response.json()
-    speech = payload.get("speech") or SPEAK_ERROR
-    follow_up = bool(payload.get("followUp"))
-    return speech, follow_up
+    # /api/query liefert EngineResult (route/response/trace) oder nacktes AssistantResponse
+    resp = payload.get("response") if isinstance(payload.get("response"), dict) else payload
+    speech = resp.get("speech") or SPEAK_ERROR
+    follow_up = bool(resp.get("followUp"))
+    ssml = bool(resp.get("ssml")) or speech.strip().startswith("<speak")
+    return speech, follow_up, ssml
 
 
 def send_progressive(handler_input, request, phrase):
@@ -134,12 +138,15 @@ class GptQueryIntentHandler(AbstractRequestHandler):
             logger.error("Gateway-Fehler: %s", result["error"], exc_info=True)
             return response_builder.speak(SPEAK_ERROR).set_should_end_session(True).response
 
-        speech, follow_up = result["value"]
+        speech, follow_up, is_ssml = result["value"]
 
         keep_open = follow_up or ask_for_further_commands
+        # ask-sdk speak() wrappt in <speak> und trimmt vorhandenen Wrapper;
+        # Klartext muss XML-escaped werden (SSML aus dem Gateway nicht)
+        response_builder.speak(escape(speech) if not is_ssml else speech)
         if keep_open:
-            return response_builder.speak(speech).ask(SPEAK_HELP).response
-        return response_builder.speak(speech).set_should_end_session(True).response
+            return response_builder.ask(SPEAK_HELP).response
+        return response_builder.set_should_end_session(True).response
 
 
 class HelpIntentHandler(AbstractRequestHandler):
