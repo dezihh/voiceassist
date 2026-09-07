@@ -57,18 +57,14 @@ jobs:
             echo "=== Stage-Modell bereits aktuell, kein PUT noetig"
           fi
 
-          echo "=== Build-Status pollen:"
-          for i in $(seq 1 12); do
+          echo "=== Build-Status pollen (GET /status?resource=interactionModel):"
+          for i in $(seq 1 24); do
             sleep 5
-            STATUS=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${BASE}/build")
-            if echo "${STATUS}" | grep -q '^{'; then
-              S=$(echo "${STATUS}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","?"))')
-            else
-              S="PENDING"
-            fi
+            STATUS=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/status?resource=interactionModel")
+            S=$(echo "${STATUS}" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastUpdateRequest",{}).get("status","UNKNOWN"))' 2>/dev/null || echo UNKNOWN)
             echo "  poll $i: ${S}"
             if [ "${S}" = "SUCCEEDED" ] || [ "${S}" = "FAILURE" ]; then
-              echo "${STATUS}" | head -c 1500; echo ""
+              echo "${STATUS}" | head -c 2000; echo ""
               break
             fi
           done
