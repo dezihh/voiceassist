@@ -23,6 +23,7 @@ import {
   updateAction,
   updateMcpServer,
   addLog,
+  getSetting,
   type ActionInput,
   type McpServerInput,
 } from './db.js';
@@ -140,19 +141,21 @@ app.post('/alexa', async (req, res) => {
   const intentName =
     (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
 
-  addLog({
-    sessionId: (body as { session?: { sessionId?: string } }).session?.sessionId ?? 'alexa',
-    query: JSON.stringify({
-      type: reqType,
-      intent: intentName,
-      appId: appId ? 'set' : 'fehlt',
-      skillMatch: appId === config.alexaSkillId,
-    }),
-    route: `alexa:${reqType || intentName || '?'}`,
-    response: '',
-    durationMs: 0,
-    trace: [],
-  });
+  if (getSetting('debug_logging') === '1') {
+    addLog({
+      sessionId: (body as { session?: { sessionId?: string } }).session?.sessionId ?? 'alexa',
+      query: JSON.stringify({
+        type: reqType,
+        intent: intentName,
+        appId: appId ? 'set' : 'fehlt',
+        skillMatch: appId === config.alexaSkillId,
+      }),
+      route: `alexa:${reqType || intentName || '?'}`,
+      response: '',
+      durationMs: 0,
+      trace: [],
+    });
+  }
 
   if (config.alexaSkillId && appId !== config.alexaSkillId) {
     res.status(403).json({ reason: 'Unerwartete applicationId' });
@@ -222,14 +225,16 @@ app.post('/admin/api/query', requireAuth, handleQuery);
 
 const handleLambdaTrace = (req: Request, res: Response) => {
   const body = req.body as { sessionId?: string; event?: string; elapsedMs?: number; note?: string };
-  addLog({
-    sessionId: body.sessionId ?? 'lambda',
-    query: JSON.stringify(body),
-    route: `lambda-trace:${body.event ?? '?'}`,
-    response: '',
-    durationMs: Number(body.elapsedMs ?? 0),
-    trace: [],
-  });
+  if (getSetting('debug_logging') === '1') {
+    addLog({
+      sessionId: body.sessionId ?? 'lambda',
+      query: JSON.stringify(body),
+      route: `lambda-trace:${body.event ?? '?'}`,
+      response: '',
+      durationMs: Number(body.elapsedMs ?? 0),
+      trace: [],
+    });
+  }
   res.status(204).end();
 };
 // Unter /api (nicht /admin): die LAN-only-Regel des Nginx-Vhosts blockiert sonst AWS-Lambda-IPs (403).
