@@ -120,7 +120,7 @@
             <option value="stdio">stdio (lokal gestartet)</option>
           </select>
           <label id="mcp-url-label">URL (Streamable HTTP)</label>
-          <input id="mcp-url" type="text" placeholder="https://<ha-host>/api/mcp">
+          <input id="mcp-url" type="text" placeholder="https://<home-assistant-host>/api/mcp">
           <label id="mcp-token-label">Bearer-Token (z. B. HA-LLAT, leer = keiner)</label>
           <input id="mcp-token" type="password">
           <label id="mcp-command-label" class="hidden">Befehl (im Container)</label>
@@ -128,7 +128,7 @@
           <label id="mcp-args-label" class="hidden">Argumente (Komma-getrennt)</label>
           <input id="mcp-args" type="text" class="hidden">
           <label id="mcp-env-label" class="hidden">Umgebungsvariablen (KEY=WERT je Zeile)</label>
-          <textarea id="mcp-env" class="hidden" rows="3" placeholder="SEARXNG_URL=http://<searxng-ip>:8003"></textarea>
+          <textarea id="mcp-env" class="hidden" rows="3" placeholder="SEARXNG_URL=http://<searxng-host>:8003"></textarea>
           <label class="check"><input id="mcp-enabled" type="checkbox" checked> Aktiv</label>
           <div class="toolbar">
             <button id="mcp-save" class="btn primary">Speichern</button>

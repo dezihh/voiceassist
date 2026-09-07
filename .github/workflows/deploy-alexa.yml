@@ -35,6 +35,9 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name alexa ! -name .git -exec rm -rf {} +
           cp -a alexa/lambda alexa/skill-package .
           rm -rf alexa
+          # Privaten Endpoint-Platzhalter durch die echte URL aus dem Secret ersetzen
+          if [[ -z "${{ secrets.ALEXA_ENDPOINT_URI }}" ]]; then echo "Secret ALEXA_ENDPOINT_URI fehlt"; exit 1; fi
+          sed -i "s#__ALEXA_ENDPOINT__#${{ secrets.ALEXA_ENDPOINT_URI }}#g" skill-package/skill.json
           git add -A
           git commit -m "deploy: ${{ github.sha }}"
 

@@ -3,7 +3,7 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "uri": "https://<gateway-host>/alexa"
+          "uri": "__ALEXA_ENDPOINT__"
         },
         "interfaces": []
       }

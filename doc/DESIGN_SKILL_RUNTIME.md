@@ -1,69 +1,63 @@
 # Design: Skill-Runtime & Timing
 
 > Wie das Skill-Backend betrieben wird und wie mit dem Alexa-Antwortfenster
-> (~8 s) umgegangen wird. Entscheidung: [Issue #2](https://github.com/dezihh/voiceassist/issues/2)
+> umgegangen wird. Entscheidung: [Issue #2](https://github.com/dezihh/voiceassist/issues/2)
 
-## Grundlagen
+## Ergebnis (umgesetzt)
 
-- Das Alexa-Antwortfenster von **~8 s** gilt unabhängig vom Hosting.
-- **Progressive Responses** (Directives API) sind auch bei Alexa-hosted nutzbar
-  (Bestandsprojekt hat den Bestätigungston so gesendet) und verlängern das
-  effektive Fenster (~20–30 s, im Betrieb zu verifizieren).
-- Erfahrungswerte aus dem Bestandsprojekt: Timeout-Probleme sind die Ausnahme.
+**Gateway als Alexa-Endpoint** – die Alexa-Lambda ist entfallen:
 
-## Phase 1 (MVP): Alexa-hosted Skill
+- Das Skill-Manifest zeigt auf `https://<gateway-host>/alexa` (nginx als
+  knx als Reverse-Proxy, TLS, `location /` → Gateway `:8331`).
+- Der `/alexa`-Endpoint im Gateway validiert die `applicationId`
+  (403 bei fremder Skill-ID, kein Bearer – Alexa sendet keinen).
+- Der Alexa-hosted-Build akzeptiert das Manifest mit `endpoint.uri` Problemlos.
+- Der gehostete Lambda ist Dead Code (CodeCommit/CI-Push bleibt für
+  Manifest/Modell-Sync bestehen).
 
-- Skill-Backend läuft bei Amazon (Python, ask-sdk) – **die gleiche Codebasis wie später Phase 2**
-- Ruft nur den öffentlichen Gateway-Endpoint auf (`/voiceassist/api/`, Reverse-Proxy, TLS)
-- Kein Account-Linking nötig: Gateway-Token als Umgebungsvariable im Alexa-Console-Setup
-- **Harte Latenzdisziplin** (Budget ~8 s):
+## Grundlagen (verifiziert im Betrieb)
 
-| Szenario | Budget | Maßnahmen |
+- Das Alexa-**Antwortfenster** von ~8 s gilt für die Antwort an den Nutzer.
+- **Progressive Responses** verlängern das Nutzer-Fenster (~20–30 s).
+- **ABER:** Die Alexa-hosted-Lambda hat ein **hartes, nicht konfigurierbares
+  AWS-Function-Timeout von exakt 8 s** – nachweislich `REPORT Duration:
+  8000.00 ms … Status: timeout` (CloudWatch) und `499` (client closed
+  request) im Nginx-Access-Log. Der Warteton-Watchdog in der Lambda
+  verlängert nur Alexanders Client-Fenster, nicht die Lambda-Ausführung.
+  Agent-Ketten > 8 s können deshalb NICHT über eine Alexa-hosted-Lambda laufen.
+
+## Architektur: Gateway-Endpoint (Option B)
+
+- `/alexa` hält die HTTP-Verbindung offen, bis der Core fertig ist
+  (deterministische Actions 200–370 ms, Agent-Ketten 10–15 s, nginx
+  `proxy_read_timeout 35s`).
+- **Warteton-Watchdog im Gateway:** bei langen Agent-Queries sendet der
+  Gateway nach 6,5 s eine Progressive Response („Einen Moment, ich schaue
+  das kurz nach.") über die Directives API (`api.eu.amazonalexa.com`,
+  Bearer `apiAccessToken` aus dem Request).
+- **Fast-Paths ohne Engine-Call** (direkte Antworten im Adapter):
+  - `LaunchRequest` → fixe Begrüßung
+  - `AMAZON.HelpIntent` → Fix-Hilfetext
+  - `AMAZON.StopIntent` / `AMAZON.CancelIntent` / `SessionEndedRequest` →
+    Abschied, Session-Ende
+  - `AMAZON.FallbackIntent` → höfliche Wiederholung mit Beispielfrage
+- GptQueryIntent → Core (`processQuery`), Modus je Action
+  (deterministic/llm/hybrid) oder Agent.
+
+## Latenzprofile (gemessen)
+
+| Szenario | Dauer | Bemerkung |
 |---|---|---|
-| Template-Action | < 3 s | kein LLM (Standard), parallele MCP-Calls |
-| Prompt-Action | < 6–7 s | festes Prompt, MCP-Allowlist, begrenzte Tool-Runden |
-| Agent-Query | volles Fenster | Tool-Iterations-Limit (z. B. max. 3), max_tokens begrenzt, schnelles Modell, parallele MCP-Calls |
+| Template-Action hausstatus | 0,2–0,4 s | `ha.call` an HA-MCP-Skript |
+| Agent warm (1 Tool) | 2–6 s | glm/gemini-Klasse |
+| Agent cold mit Websuche | 10–15 s | Warteton bei 6,5 s |
 
-- **Graceful Timeout:** bei Überschreitung höfliche Fehlerantwort („Das hat leider zu lange gedauert…") + Log-Eintrag – die Logdaten sind die Entscheidungsgrundlage für Phase 2
-- **Warteton-Watchdog (implementiert):** Gateway-Aufruf im Worker-Thread;
-  nach `watchdog_delay` (~6,5 s) ohne Antwort zweite Progressive Response
-  (Warteton-Phrase), danach Warten bis `gateway_timeout` (28 s). Konfiguration
-  über Lambda-Umgebungsvariablen (`warteton_enabled`, `warteton_phrase`,
-  `watchdog_delay`, `gateway_timeout`); Acknowledgment-Phrase bei t = 0 bleibt
-  separat (`acknowledgment_enabled`).
+Konfiguration: `LLM_MODEL=gemini/gemini-3.5-flash-lite` (kostenlos,
+0,6 s/Tool-Turn), `LLM_MAX_TOKENS=2000` (zu klein → leere Speech durch
+Thinking-Tokens), `num_results`-Cap 3 für searxng_web_search.
 
-### Verifikationspunkte Prototyp
+## Offene Punkte
 
-1. Progressive Response in Alexa-hosted: funktioniert? Bis wann?
-2. Effektive Antwortfenster-Grenze messen
-3. Latenzprofile je Szenario im Gateway-Log erfassen (später UI-Statistik)
-
-## Phase 2 (Kontingenz): eigene AWS-Lambda
-
-**Nur wenn im Betrieb Probleme auftreten** (Trigger z. B.: wiederholt Agent-Queries > 8 s,
-Graceful-Timeout-Quote über Schwelle). Dann:
-
-- Umzug des Skill-Backends auf **eigene AWS-Lambda** – gleiche Codebasis, nur Deployment-Wechsel (ARN-Endpoint in der Alexa-Console ändern)
-- Lambda-Timeout erhöhen
-- **Progressive-Response-Kette:**
-  - t ≈ 0,5–1 s: Warteton/Phrase an den Nutzer (konfigurierbar)
-  - t ≈ 6,5 s ohne Gateway-Antwort: **Watchdog** sendet zweite Progressive Response („Ich bin noch dabei…") → verlängert das Fenster
-  - sobald Gateway fertig: finale Antwort innerhalb des verlängerten Fensters
-  - wichtig: **keine finale Zwischenantwort als Trick** – sie beendet den Request endgültig
-- Falls auch das Fenster endet: Graceful Timeout wie Phase 1
-
-## Konfiguration (Gateway/Lambda)
-
-| Parameter | Default | Phase |
-|---|---|---|
-| Warteton-Modus | `phrase` (`phrase` / `tone` / `off`) | 1+2 |
-| Agent: max. Tool-Iterationen | 3 | 1+2 |
-| Agent: max_tokens | klein (Antwortlänge Sprache) | 1+2 |
-| Watchdog-Schwelle | ~6,5 s | 1+2 (implementiert) |
-| Lambda-Timeout | 8 s (Alexa-hosted fix) | 2: erhöhen |
-| Gateway-Timeout (Lambda) | 28 s | 1+2 (implementiert) |
-
-## Offene Fragen
-
-- [ ] Konkrete Trigger-Schwellen für Phase 2 (aus anfänglichen Betriebsdaten ableiten)
-- [ ] Alexa-hosted: Speicher-/Package-Grenzen für lambda/ prüfen
+- [ ] Multi-Turn-Clarification-State (Issue #7)
+- [ ] Query-Slot-Bereinigung (Invocation-Reste im Slot-Text)
+- [ ] Agent-Qualität: Halluzinationen („Aktenzeichen …") beobachten
