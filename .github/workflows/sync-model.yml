@@ -34,25 +34,35 @@ jobs:
           echo "=== Aktuelles Modell im development-Stage (GptQueryIntent):"
           HTTP=$(curl -s -D /tmp/h.txt -o /tmp/current.json -w "%{http_code}" -H "Authorization: Bearer ${ACCESS}" "${BASE}")
           echo "GET -> HTTP ${HTTP}"
+          NEED_SYNC=1
           if [ "${HTTP}" = "200" ]; then
-            python3 -c 'import json; d=json.load(open("/tmp/current.json")); print(json.dumps([i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"], ensure_ascii=False))'
+            python3 -c 'import json; d=json.load(open("/tmp/current.json")); s=[i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"]; print("STAGE-SAMPLES:", json.dumps(s, ensure_ascii=False)); open("/tmp/need_sync","w").write("0" if any("nach {query}" in x for x in s[0]) else "1")'
+            NEED_SYNC=$(cat /tmp/need_sync)
             ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
-            echo "eTag: ${ETAG}"
+            echo "eTag: ${ETAG}, NEED_SYNC=${NEED_SYNC}"
           else
             cat /tmp/current.json; echo ""
             ETAG=""
           fi
 
-          echo "=== Sauberes Modell per PUT hochladen:"
-          if [ -n "${ETAG}" ]; then
-            HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -H "If-Match: ${ETAG}" --data-binary @${MODEL} "${BASE}")
+          if [ "${NEED_SYNC}" = "1" ]; then
+            echo "=== Sauberes Modell per PUT hochladen:"
+            if [ -n "${ETAG}" ]; then
+              HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -H "If-Match: ${ETAG}" --data-binary @${MODEL} "${BASE}")
+            else
+              HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" --data-binary @${MODEL} "${BASE}")
+            fi
+            echo "PUT -> HTTP ${HTTP}"; cat /tmp/put.json; echo ""
           else
-            HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" --data-binary @${MODEL} "${BASE}")
+            echo "=== Stage-Modell bereits aktuell, kein PUT noetig"
           fi
-          echo "PUT -> HTTP ${HTTP}"; cat /tmp/put.json; echo ""
 
-          echo "=== Build triggern:"
-          curl -s -X POST -H "Authorization: Bearer ${ACCESS}" "${BASE}/build" | head -c 500; echo ""
+          echo "=== Build triggern (mit Retry):"
+          for a in 1 2 3; do
+            RESP=$(curl -s -H "Authorization: Bearer ${ACCESS}" -X POST "${BASE}/build")
+            if echo "${RESP}" | grep -q '{'; then echo "Build-Trigger OK: $(echo "${RESP}" | head -c 200)"; break; fi
+            echo "  Versuch $a fehlgeschlagen (Amazon 5xx?), warte..."; sleep 3
+          done
 
           echo "=== Build-Status pollen:"
           for i in $(seq 1 12); do
