@@ -23,7 +23,15 @@ jobs:
         env:
           SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
         run: |
-          REPO_URL="${{ secrets.ALEXA_HOSTED_REPO_URL }}"
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          HOSTED=$(curl -f -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}"/v1/skills/"${SKILL_ID}"/alexaHosted)
+          REPO_URL=$(tr -d '\n' <<< "${HOSTED}" | tr -d ' ' | sed -n 's/.*"url":"\([^{]*\)"},"runtime".*/\1/p')
+          if [[ -z "${REPO_URL}" ]]; then echo "Alexa-hosted Repo fuer ${SKILL_ID} nicht gefunden"; exit 1; fi
+          echo "Repo-URL aufgeloest"
           git remote remove alexa 2>/dev/null || true
           git remote add alexa "${REPO_URL}"
           HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
