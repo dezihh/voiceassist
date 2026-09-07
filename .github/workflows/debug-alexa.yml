@@ -1,0 +1,50 @@
+name: Debug Alexa Repo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore ASK CLI auth files
+        run: |
+          mkdir -p ~/.ask/scripts
+          cp .github/ask/git-credential-helper ~/.ask/scripts/git-credential-helper
+          cp .github/ask/ask-pre-push ~/.ask/scripts/ask-pre-push
+          chmod +x ~/.ask/scripts/git-credential-helper ~/.ask/scripts/ask-pre-push
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+
+      - name: Alexa-Repo inspizieren (alle Branches)
+        env:
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+        run: |
+          REPO_URL="${{ secrets.ALEXA_HOSTED_REPO_URL }}"
+          git remote remove alexa 2>/dev/null || true
+          git remote add alexa "${REPO_URL}"
+          HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
+          git config "credential.https://${HOST_PATH}".helper ""
+          git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
+          git config "credential.https://${HOST_PATH}".UseHttpPath true
+          git fetch alexa '+refs/heads/*:refs/remotes/alexa/*' --prune
+          echo "=== Branches im Alexa-Repo:"
+          git branch -r | grep alexa/
+          for b in $(git branch -r | grep 'alexa/' | grep -v HEAD); do
+            echo ""
+            echo "===== BRANCH $b ====="
+            echo "--- interactionModels-Dateien:"
+            git ls-tree -r --name-only "$b" | grep -i interaction || echo "  (keine)"
+            echo "--- bare-{query}-Zeilen (erwartet: keine):"
+            for f in $(git ls-tree -r --name-only "$b" | grep -i 'interactionModels/'); do
+              git show "$b:$f" | grep -n '"{query}"' && echo "  ^^^ in $f" || true
+            done
+            echo "--- GptQueryIntent-Samples:"
+            for f in $(git ls-tree -r --name-only "$b" | grep -i 'interactionModels/'); do
+              echo "  [$f]"
+              git show "$b:$f" | sed -n '/GptQueryIntent/,/]/p' | head -25
+            done
+          done
