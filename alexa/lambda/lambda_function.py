@@ -94,7 +94,7 @@ def lambda_trace(session_id, event, elapsed_ms=None):
     def run():
         try:
             requests.post(
-                "{}/admin/api/lambda-trace".format(gateway_url),
+                "{}/api/lambda-trace".format(gateway_url),
                 headers={
                     "Authorization": "Bearer {}".format(gateway_token),
                     "Content-Type": "application/json",

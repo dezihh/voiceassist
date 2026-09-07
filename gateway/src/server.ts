@@ -120,7 +120,7 @@ const handleQuery = async (req: Request, res: Response): Promise<void> => {
 app.post('/api/query', requireAuth, handleQuery);
 app.post('/admin/api/query', requireAuth, handleQuery);
 
-app.post('/admin/api/lambda-trace', requireAuth, (req, res) => {
+const handleLambdaTrace = (req, res) => {
   const body = req.body as { sessionId?: string; event?: string; elapsedMs?: number; note?: string };
   addLog({
     sessionId: body.sessionId ?? 'lambda',
@@ -131,7 +131,10 @@ app.post('/admin/api/lambda-trace', requireAuth, (req, res) => {
     trace: [],
   });
   res.status(204).end();
-});
+};
+// Unter /api (nicht /admin): die LAN-only-Regel des Nginx-Vhosts blockiert sonst AWS-Lambda-IPs (403).
+app.post('/api/lambda-trace', requireAuth, handleLambdaTrace);
+app.post('/admin/api/lambda-trace', requireAuth, handleLambdaTrace);
 
 app.get('/admin/api/bootstrap', requireAuth, (req, res) => {
   res.json({
