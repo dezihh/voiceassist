@@ -27,15 +27,18 @@
               "type": "AMAZON.SearchQuery"
             }
           ],
-          "samples": [
-            "was ist {query}",
-            "wie ist {query}",
-            "sag mir {query}",
-            "gib mir {query}",
-            "frage {query}",
-            "stell eine Frage zu {query}",
-            "was weißt du über {query}"
-          ]
+        "samples": [
+          "was ist {query}",
+          "wie ist {query}",
+          "sag mir {query}",
+          "gib mir {query}",
+          "frage {query}",
+          "frage nach {query}",
+          "nach {query}",
+          "über {query}",
+          "stell eine Frage zu {query}",
+          "was weißt du über {query}"
+        ]
         }
       ],
       "types": []
