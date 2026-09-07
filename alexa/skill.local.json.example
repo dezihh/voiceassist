@@ -1,0 +1,4 @@
+{
+  "skill_id": "amzn1.ask.skill.HIER-NEUE-SKILL-ID",
+  "endpoint_url": "https://<gateway-host>/alexa"
+}
