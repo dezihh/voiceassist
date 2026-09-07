@@ -1,0 +1,34 @@
+name: List Skills (SMAPI)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore ASK CLI auth files
+        run: |
+          mkdir -p ~/.ask/scripts
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+
+      - name: Alle Skills des Vendors auflisten
+        env:
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+        run: |
+          set -e
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          VENDOR=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"].get("vendor_id",""))')
+          echo "Vendor: ${VENDOR:0:8}..."
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          if [ -z "${ACCESS}" ]; then echo "Kein LWA Token"; exit 1; fi
+          echo "=== Skill-Liste (vendor) als JSON:"
+          curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills?vendorId=${VENDOR}&maxResults=50" -o /tmp/skills.json
+          python3 -m json.tool /tmp/skills.json | head -c 4000
+          echo ""
+          echo "=== GET neuer Skill (070bad87):"
+          curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}" -o /tmp/skill.json
+          python3 -m json.tool /tmp/skill.json | head -c 2000
