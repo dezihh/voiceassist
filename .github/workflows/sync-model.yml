@@ -36,7 +36,7 @@ jobs:
           echo "GET -> HTTP ${HTTP}"
           NEED_SYNC=1
           if [ "${HTTP}" = "200" ]; then
-            python3 -c 'import json; d=json.load(open("/tmp/current.json")); s=[i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"]; print("STAGE-SAMPLES:", json.dumps(s, ensure_ascii=False)); open("/tmp/need_sync","w").write("0" if any("nach {query}" in x for x in s[0]) else "1")'
+            python3 -c 'import json; d=json.load(open("/tmp/current.json")); s=[i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"]; print("STAGE-SAMPLES:", json.dumps(s, ensure_ascii=False)); open("/tmp/need_sync","w").write("0" if any("zum thema {query}" in x for x in s[0]) else "1")'
             NEED_SYNC=$(cat /tmp/need_sync)
             ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
             echo "eTag: ${ETAG}, NEED_SYNC=${NEED_SYNC}"
