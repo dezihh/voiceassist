@@ -22,6 +22,7 @@ import {
   setSetting,
   updateAction,
   updateMcpServer,
+  addLog,
   type ActionInput,
   type McpServerInput,
 } from './db.js';
