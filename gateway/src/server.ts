@@ -97,10 +97,96 @@ function normalizeServerInput(body: Record<string, unknown>): McpServerInput {
   };
 }
 
-app.post('/alexa', requireAuth, async (req, res) => {
-  const query = toVoiceQuery(req.body as Record<string, never>);
-  const result = await processQuery(query);
-  res.json(fromAssistantResponse(result.response));
+const WARTETON_PHRASE = 'Einen Moment, ich schaue das kurz nach.';
+const ALEXA_WELCOME = 'Hallo, ich bin Ihr Voice-Assistent. Was kann ich für Sie tun?';
+const ALEXA_HELP =
+  'Sie können mich zum Beispiel nach dem Hausstatus oder nach aktuellen Nachrichten fragen.';
+const ALEXA_GOODBYE = 'Bis zum nächsten Mal.';
+const ALEXA_FALLBACK =
+  'Entschuldigung, das habe ich nicht verstanden. Versuchen Sie zum Beispiel: was ist der Hausstatus.';
+
+async function sendProgressiveDirective(
+  apiAccessToken: string,
+  requestId: string
+): Promise<void> {
+  try {
+    await fetch(`${config.alexaDirectivesBase}/v1/directives`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiAccessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        directive: {
+          header: { requestId },
+          directive: { type: 'VoicePlayer.Speak', speech: WARTETON_PHRASE },
+        },
+      }),
+    });
+  } catch (e) {
+    console.error('Progressive Directive fehlgeschlagen:', e);
+  }
+}
+
+app.post('/alexa', async (req, res) => {
+  const body = req.body as {
+    context?: {
+      System?: { application?: { applicationId?: string }; apiAccessToken?: string };
+    };
+    request?: { requestId?: string; type?: string; intent?: { name?: string } };
+  };
+  const appId = body.context?.System?.application?.applicationId;
+  if (config.alexaSkillId && appId !== config.alexaSkillId) {
+    res.status(403).json({ reason: 'Unerwartete applicationId' });
+    return;
+  }
+
+  const reqType = body.request?.type ?? '';
+  const intentName =
+    (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
+
+  // Fast-Paths: einfache Requests ohne Engine-Aufruf (kein LLM-Turn, keine Kosten)
+  if (reqType === 'SessionEndedRequest') {
+    res.json({ version: '1.0', response: {} });
+    return;
+  }
+  const fast =
+    reqType === 'LaunchRequest'
+      ? { speech: ALEXA_WELCOME, end: false }
+      : intentName === 'AMAZON.HelpIntent'
+        ? { speech: ALEXA_HELP, end: false }
+        : intentName === 'AMAZON.StopIntent' || intentName === 'AMAZON.CancelIntent'
+          ? { speech: ALEXA_GOODBYE, end: true }
+          : intentName === 'AMAZON.FallbackIntent' || intentName === 'FallbackIntent'
+            ? { speech: ALEXA_FALLBACK, end: false }
+            : undefined;
+  if (fast) {
+    res.json(fromAssistantResponse({ speech: fast.speech, followUp: !fast.end }));
+    return;
+  }
+
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  if (body.request?.type === 'IntentRequest' && body.context?.System?.apiAccessToken && body.request.requestId) {
+    watchdog = setTimeout(
+      () =>
+        sendProgressiveDirective(
+          body.context!.System!.apiAccessToken!,
+          body.request!.requestId!
+        ),
+      6500
+    );
+  }
+
+  try {
+    const query = toVoiceQuery(req.body as Record<string, never>);
+    const result = await processQuery(query);
+    res.json(fromAssistantResponse(result.response));
+  } catch (e) {
+    console.error('Alexa-Verarbeitung fehlgeschlagen:', e);
+    res.json(fromAssistantResponse({ speech: 'Entschuldigung, da ist etwas schiefgelaufen.' }));
+  } finally {
+    if (watchdog) clearTimeout(watchdog);
+  }
 });
 
 const handleQuery = async (req: Request, res: Response): Promise<void> => {
@@ -120,7 +206,7 @@ const handleQuery = async (req: Request, res: Response): Promise<void> => {
 app.post('/api/query', requireAuth, handleQuery);
 app.post('/admin/api/query', requireAuth, handleQuery);
 
-const handleLambdaTrace = (req, res) => {
+const handleLambdaTrace = (req: Request, res: Response) => {
   const body = req.body as { sessionId?: string; event?: string; elapsedMs?: number; note?: string };
   addLog({
     sessionId: body.sessionId ?? 'lambda',

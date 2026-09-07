@@ -19,4 +19,6 @@ export const config = {
   },
   agentClarificationBudget: Number(process.env.AGENT_CLARIFICATION_BUDGET ?? 2),
   maxToolIterations: Number(process.env.MAX_TOOL_ITERATIONS ?? 6),
+  alexaSkillId: process.env.ALEXA_SKILL_ID,
+  alexaDirectivesBase: process.env.ALEXA_DIRECTIVES_BASE ?? 'https://api.eu.amazonalexa.com',
 };
