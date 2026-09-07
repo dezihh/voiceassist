@@ -65,14 +65,15 @@ jobs:
 
       - name: lambda/config.json aus Alexa-Repo erhalten (Pflicht)
         run: |
-          git fetch alexa master
-          if ! git checkout alexa/master -- lambda/config.json; then
-            echo "::error::lambda/config.json fehlt im Alexa-Repo (Branch master). Bootstrap in der Konsole noetig - Deploy abgebrochen, um die Konfiguration nicht zu loeschen."
+          git fetch alexa master dev
+          if git checkout alexa/master -- lambda/config.json 2>/dev/null || git checkout alexa/dev -- lambda/config.json; then
+            git add lambda/config.json
+            git commit --amend --no-edit
+            echo "config.json aus Alexa-Repo uebernommen"
+          else
+            echo "::error::lambda/config.json weder im Alexa-master noch -dev gefunden. Bootstrap in der Konsole noetig - Deploy abgebrochen, um die Konfiguration nicht zu loeschen."
             exit 1
           fi
-          git add lambda/config.json
-          git commit --amend --no-edit
-          echo "config.json aus Alexa-Repo uebernommen"
 
       - name: Push to Alexa-hosted (master = development, dev = Konsole-Sync)
         run: |
