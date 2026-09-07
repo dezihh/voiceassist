@@ -56,3 +56,28 @@ jobs:
           git show alexa/dev:lambda/requirements.txt 2>&1 || echo "FEHLT"
           echo "=== lambda/ auf alexa/master:"
           git ls-tree --name-only "alexa/master:lambda" 2>&1
+
+      - name: Deployed lambda_function.py kompilieren (dev + master)
+        env:
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+        run: |
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          REPO_ID="${SKILL_ID#amzn1.ask.skill.}"
+          REPO_URL="https://git-codecommit.us-east-1.amazonaws.com/v1/repos/${REPO_ID}"
+          HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
+          git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
+          git config "credential.https://${HOST_PATH}".UseHttpPath true
+          git remote add alexa "${REPO_URL}" 2>/dev/null || true
+          git fetch alexa '+refs/heads/*:refs/remotes/alexa/*'
+          for B in dev master; do
+            echo "=== ${B}: lambda_function.py kompilieren:"
+            if git show "alexa/${B}:lambda/lambda_function.py" > /tmp/lf.py 2>/dev/null; then
+              python3 -m py_compile /tmp/lf.py && echo "OK - kompiliert sauber" || python3 -m py_compile /tmp/lf.py
+            else
+              echo "FEHLT im Branch ${B}"
+            fi
+            echo "=== ${B}: trailing whitespace (letzte 5):"
+            git show "alexa/${B}:lambda/lambda_function.py" | grep -nP "[ \t]+$" | head -5 || echo "keine"
+          done
