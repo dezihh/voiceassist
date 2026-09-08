@@ -117,7 +117,7 @@ def sync_model(auth, access, skill_id, force):
     return poll_status(auth, access, skill_id, "interactionModel") == "SUCCEEDED"
 
 
-def sync_manifest(auth, access, skill_id, endpoint, force):
+def sync_manifest(auth, access, skill_id, endpoint, privacy_url, force):
     path = "stages/development/manifest"
     code, etag, body = smapi(auth, access, skill_id, path)
     if code == 200 and not force:
@@ -129,9 +129,13 @@ def sync_manifest(auth, access, skill_id, endpoint, force):
         except Exception:
             pass
     manifest = json.loads(SKILL_JSON.read_text())
-    raw = json.dumps(manifest, ensure_ascii=False).replace("__ALEXA_ENDPOINT__", endpoint)
-    if "__ALEXA_ENDPOINT__" in raw:
-        print("FEHLER: __ALEXA_ENDPOINT__ nicht ersetzt - endpoint_url in skill.local.json setzen.")
+    raw = (
+        json.dumps(manifest, ensure_ascii=False)
+        .replace("__ALEXA_ENDPOINT__", endpoint)
+        .replace("__ALEXA_PRIVACY_URL__", privacy_url)
+    )
+    if "__ALEXA_" in raw:
+        print("FEHLER: Nicht alle Manifest-Platzhalter wurden ersetzt.")
         return False
     code, _, body = smapi(auth, access, skill_id, path, "PUT", raw.encode(), etag)
     print("Manifest-PUT -> HTTP {}".format(code))
@@ -151,7 +155,13 @@ def main():
     if not LOCAL_CFG.exists():
         sys.exit("Fehlt: {} (Vorlage: skill.local.json.example)".format(LOCAL_CFG))
     cfg = json.loads(LOCAL_CFG.read_text())
-    skill_id, endpoint = cfg["skill_id"], cfg["endpoint_url"]
+    skill_id = cfg["skill_id"]
+    endpoint = cfg["endpoint_url"]
+    endpoint_parts = urllib.parse.urlsplit(endpoint)
+    privacy_url = cfg.get(
+        "privacy_url",
+        urllib.parse.urlunsplit((endpoint_parts.scheme, endpoint_parts.netloc, "/privacy", "", "")),
+    )
 
     auth, refresh = read_ask_files()
     access = lwa_token(auth, refresh)
@@ -161,7 +171,7 @@ def main():
     if not args.manifest_only:
         ok &= sync_model(auth, access, skill_id, args.force)
     if not args.model_only:
-        ok &= sync_manifest(auth, access, skill_id, endpoint, args.force)
+        ok &= sync_manifest(auth, access, skill_id, endpoint, privacy_url, args.force)
     sys.exit(0 if ok else 1)
 
 

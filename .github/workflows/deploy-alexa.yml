@@ -35,9 +35,21 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name alexa ! -name .git -exec rm -rf {} +
           cp -a alexa/lambda alexa/skill-package .
           rm -rf alexa
-          # Privaten Endpoint-Platzhalter durch die echte URL aus dem Secret ersetzen
+          # Private Manifest-Platzhalter durch die echten URLs aus Secrets ersetzen
           if [[ -z "${{ secrets.ALEXA_ENDPOINT_URI }}" ]]; then echo "Secret ALEXA_ENDPOINT_URI fehlt"; exit 1; fi
-          sed -i "s#__ALEXA_ENDPOINT__#${{ secrets.ALEXA_ENDPOINT_URI }}#g" skill-package/skill.json
+          if [[ -z "${{ secrets.ALEXA_PRIVACY_URL }}" ]]; then echo "Secret ALEXA_PRIVACY_URL fehlt"; exit 1; fi
+          case "${{ secrets.ALEXA_ENDPOINT_URI }}" in
+            https://*/alexa) ;;
+            *) echo "Secret ALEXA_ENDPOINT_URI muss eine oeffentliche HTTPS-URL mit Pfad /alexa sein"; exit 1 ;;
+          esac
+          sed -i \
+            -e "s#__ALEXA_ENDPOINT__#${{ secrets.ALEXA_ENDPOINT_URI }}#g" \
+            -e "s#__ALEXA_PRIVACY_URL__#${{ secrets.ALEXA_PRIVACY_URL }}#g" \
+            skill-package/skill.json
+          if grep -q '__ALEXA_' skill-package/skill.json; then
+            echo "Manifest enthaelt nicht ersetzte Alexa-Platzhalter"
+            exit 1
+          fi
           git add -A
           git commit -m "deploy: ${{ github.sha }}"
 
