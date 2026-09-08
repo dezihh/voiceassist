@@ -2,6 +2,10 @@ name: Sync Interaction Model (SMAPI)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "1 = PUT erzwingen (Diff-Check ignorieren)"
+        default: "0"
 
 jobs:
   sync:
@@ -35,13 +39,14 @@ jobs:
           HTTP=$(curl -s -D /tmp/h.txt -o /tmp/current.json -w "%{http_code}" -H "Authorization: Bearer ${ACCESS}" "${BASE}")
           echo "GET -> HTTP ${HTTP}"
           NEED_SYNC=1
-          if [ "${HTTP}" = "200" ]; then
-            python3 -c 'import json; d=json.load(open("/tmp/current.json")); s=[i["samples"] for i in d["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"]; print("STAGE-SAMPLES:", json.dumps(s, ensure_ascii=False)); open("/tmp/need_sync","w").write("0" if (s and any("zum thema {query}" in x for x in s[0])) else "1")'
+          if [ "${HTTP}" = "200" ] && [ "${{ inputs.force }}" != "1" ]; then
+            python3 -c 'import json; stage=json.load(open("/tmp/current.json")); local=json.load(open("alexa/skill-package/interactionModels/custom/de-DE.json")); s=lambda m: next((i.get("samples",[]) for i in m["interactionModel"]["languageModel"]["intents"] if i["name"]=="GptQueryIntent"), []); ss, ls = s(stage), s(local); need = 0 if ss==ls else 1; print("STAGE-SAMPLES:", len(ss), "| LOCAL-SAMPLES:", len(ls)); print("Identisch:", ss==ls); open("/tmp/need_sync","w").write(str(need))'
             NEED_SYNC=$(cat /tmp/need_sync)
             ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
             echo "eTag: ${ETAG}, NEED_SYNC=${NEED_SYNC}"
           else
-            cat /tmp/current.json; echo ""
+            [ "${{ inputs.force }}" = "1" ] && echo "=== FORCE=1: PUT wird erzwungen"
+            [ "${HTTP}" != "200" ] && { cat /tmp/current.json; echo ""; }
             ETAG=""
           fi
 
