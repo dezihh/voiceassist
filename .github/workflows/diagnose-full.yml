@@ -2,6 +2,10 @@ name: Full Skill Diagnosis (SMAPI)
 
 on:
   workflow_dispatch:
+    inputs:
+      skill_override:
+        description: "Alternative Skill-ID (leer = Secret ALEXA_SKILL_ID)"
+        default: ""
 
 jobs:
   diagnose:
@@ -15,7 +19,7 @@ jobs:
 
       - name: Region + Skill-Zustand pruefen
         env:
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          SKILL_ID: ${{ github.event.inputs.skill_override || secrets.ALEXA_SKILL_ID }}
         run: |
           set -e
           source ~/.ask/auth_info
