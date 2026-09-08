@@ -2,15 +2,10 @@ services:
   gateway:
     build:
       context: .
-      target: dev
+      target: runtime
     ports:
       - "${GATEWAY_PORT:-3000}:3000"
     env_file: .env
     volumes:
-      - .:/app
-      - node_modules:/app/node_modules
-    command: npm run dev
+      - ./data:/app/data
     restart: unless-stopped
-
-volumes:
-  node_modules:
