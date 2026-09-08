@@ -52,9 +52,9 @@ function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantRespon
   const text = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   if (text.startsWith('{')) {
     try {
-      const parsed = JSON.parse(text) as { needs_clarification?: boolean; speech?: string };
+      const parsed = JSON.parse(text) as { needs_clarification?: boolean; speech?: string; keep_open?: boolean };
       if (typeof parsed.speech === 'string' && parsed.speech.trim().length > 0) {
-        return { speech: parsed.speech, followUp: parsed.needs_clarification === true };
+        return { speech: parsed.speech, followUp: parsed.needs_clarification === true, keepOpen: parsed.keep_open === true };
       }
       trace.push({ ts: Date.now(), step: 'agent.empty_speech' });
       return { speech: 'Entschuldigung, dazu habe ich gerade nichts gefunden.' };
@@ -181,8 +181,19 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     }
   }
 
-  if (getSetting('session_followup') === '1' && !response.followUp) {
-    response = { ...response, followUp: true, followupPrompt: 'Was kann ich noch für Sie tun?' };
+  if (!response.followUp) {
+    const mode = getSetting('session_followup') ?? '0';
+    const wantLlm = mode === 'llm' || mode === 'beides';
+    const wantKw = mode === 'keyword' || mode === 'beides';
+    const kwList = (getSetting('session_keywords') ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const kwHit = wantKw && kwList.some((k) => query.text.toLowerCase().includes(k));
+    const llmHit = wantLlm && response.keepOpen === true;
+    if (kwHit || llmHit) {
+      response = { ...response, followUp: true, followupPrompt: 'Was kann ich noch für Sie tun?' };
+    }
   }
 
   const durationMs = Date.now() - start;

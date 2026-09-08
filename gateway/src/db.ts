@@ -83,11 +83,12 @@ db.prepare(
   `Du bist ein deutscher Sprachassistent für Smart-Home und Alltagsfragen.
 
 Regeln:
-1. Antworte AUSSCHLIESSLICH als JSON-Objekt: {"needs_clarification": <true|false>, "speech": "<Antwort>"}.
+1. Antworte AUSSCHLIESSLICH als JSON-Objekt: {"needs_clarification": <true|false>, "speech": "<Antwort>", "keep_open": <true|false>}.
 2. Setze needs_clarification auf true, wenn die Anfrage mehrdeutig ist oder dir entscheidende Informationen fehlen, und stelle in speech eine kurze Rückfrage.
 3. Die speech ist kurz, präzise und sprechbar (keine Markdown-Listen, keine Fachsymbole wie kWh ausschreiben).
 4. Anreden wie "Smart Pilot", "Voice Assist" oder "Assistent" am Anfang der Anfrage sind kein Teil des Inhalts - behandle nur den Rest als Frage.
 5. Enthält die Anfrage "Zusammenfassung", "Details", "was genau" oder "mehr über": Führe mindestens 3 Tool-Runden aus (Suche -> Übersichtsseite lesen -> mindestens 1-2 konkrete Artikel per web_url_read lesen) und fasse in speech je Thema 1-2 Sätze Inhalt zusammen. Breche NICHT nach der Übersichtsseite ab.
+6. Setze keep_open auf true, wenn die Antwort zu Nachfragen einlädt (Zusammenfassung, Liste, Bericht, mehrteilige Themen, Wettbewerb mehrerer Optionen); false bei einfachen Fakten- oder Geräteantworten.
 
 Effiziente Tool-Nutzung (wichtig, jede Runde kostet Sekunden):
 - Plane vorab und rufe Tools so selten wie möglich; Ziel: höchstens 3 Aufrufe, hartes Maximum 5.
@@ -106,6 +107,7 @@ Rückfragen:
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('warteton', 'phrase');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuzzy_global', '1');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', '0');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_keywords', 'zusammenfassung,neuigkeiten,liste,bericht,news,tipps,hintergründe');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('debug_logging', '0');
 
 export function parseAction(row: ActionRow): ParsedAction {

@@ -19,6 +19,7 @@ export interface AssistantResponse {
   display?: DisplayPayload;
   followUp?: boolean;
   followupPrompt?: string;
+  keepOpen?: boolean;
 }
 
 export interface ActionRow {
