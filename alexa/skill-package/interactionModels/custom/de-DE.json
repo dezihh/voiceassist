@@ -31,6 +31,7 @@
           "was ist {query}",
           "wie ist {query}",
           "sag mir {query}",
+          "sage {query}",
           "gib mir {query}",
           "frage {query}",
           "frage mich {query}",
@@ -47,7 +48,12 @@
           "was gibt es neues über {query}",
           "gibt es neues zu {query}",
           "gibt es neuigkeiten über {query}",
-          "erzähl mir etwas über {query}"
+          "erzähl mir etwas über {query}",
+          "schalte {query}",
+          "mache {query}",
+          "stelle {query}",
+          "mach {query}",
+          "bitte {query}"
         ]
         }
       ],
