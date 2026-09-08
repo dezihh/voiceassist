@@ -1,0 +1,23 @@
+name: External Endpoint Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Oeffentliche Erreichbarkeit vsys.ziegler-eu.de pruefen
+        run: |
+          echo "=== Runner-IP:"
+          curl -s https://checkip.amazonaws.com || true
+          echo "=== DNS:"
+          getent hosts vsys.ziegler-eu.de || nslookup vsys.ziegler-eu.de 2>&1 | tail -3
+          echo "=== TLS-Handshake + GET /privacy:"
+          curl -sS -m 20 -o /dev/null -w "GET /privacy -> HTTP %{http_code}, tls_verify=%{ssl_verify_result}, total=%{time_total}s\n" https://vsys.ziegler-eu.de/privacy 2>&1
+          echo "=== POST /alexa (LaunchRequest, korrekte appId):"
+          BODY='{"version":"1.0","session":{"new":true,"sessionId":"amzn1.echo-api.session.extcheck","application":{"applicationId":"amzn1.ask.skill.070bad87-ac04-4fa2-9f49-8cdd3e3b1ec1"}},"context":{"System":{"application":{"applicationId":"amzn1.ask.skill.070bad87-ac04-4fa2-9f49-8cdd3e3b1ec1"}}},"request":{"type":"LaunchRequest","requestId":"amzn1.echo-external.request.extcheck"}}'
+          curl -sS -m 20 -o /tmp/resp.json -w "POST /alexa -> HTTP %{http_code}, total=%{time_total}s\n" -X POST -H "Content-Type: application/json" --data-binary "${BODY}" https://vsys.ziegler-eu.de/alexa 2>&1
+          head -c 400 /tmp/resp.json; echo ""
+          echo "=== TLS-Details:"
+          echo | openssl s_client -connect vsys.ziegler-eu.de:443 -servername vsys.ziegler-eu.de 2>/dev/null | grep -E "subject=|issuer=|Verify return" || true
