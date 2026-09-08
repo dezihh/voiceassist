@@ -181,6 +181,10 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     }
   }
 
+  if (getSetting('session_followup') === '1' && !response.followUp) {
+    response = { ...response, followUp: true, followupPrompt: 'Was kann ich noch für Sie tun?' };
+  }
+
   const durationMs = Date.now() - start;
   addLog({
     sessionId: query.sessionId,

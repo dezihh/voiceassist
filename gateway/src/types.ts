@@ -18,6 +18,7 @@ export interface AssistantResponse {
   ssml?: boolean;
   display?: DisplayPayload;
   followUp?: boolean;
+  followupPrompt?: string;
 }
 
 export interface ActionRow {

@@ -57,7 +57,14 @@ export function fromAssistantResponse(resp: AssistantResponse): Record<string, u
     response: {
       outputSpeech,
       card: { type: 'Simple', title: 'VoiceAssist', content: cardText },
-      reprompt: resp.followUp ? { outputSpeech } : undefined,
+      reprompt: resp.followUp
+        ? {
+            outputSpeech: {
+              type: 'SSML',
+              ssml: toSsml({ speech: resp.followupPrompt ?? resp.speech }),
+            },
+          }
+        : undefined,
       shouldEndSession: !resp.followUp,
     },
   };
