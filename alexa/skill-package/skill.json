@@ -3,7 +3,8 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "uri": "__ALEXA_ENDPOINT__"
+          "uri": "__ALEXA_ENDPOINT__",
+          "sslCertificateType": "Trusted"
         },
         "interfaces": []
       }
