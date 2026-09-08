@@ -4,6 +4,7 @@ import {
   listActions,
   getPrompt,
   getSetting,
+  recentAgentTurns,
 } from '../db.js';
 import { chatCompletion, type ChatMessage, type ToolSpec } from '../llm/client.js';
 import { getMcpContext, type McpContext } from '../mcp/registry.js';
@@ -18,6 +19,27 @@ import type {
 } from '../types.js';
 
 const FallbackError = 'Entschuldigung, da ist etwas schiefgelaufen.';
+
+const sessionHistory = new Map<string, ChatMessage[]>();
+const HISTORY_MAX_MESSAGES = 8;
+const HISTORY_MAX_SESSIONS = 100;
+
+function priorTurns(sessionId: string): ChatMessage[] {
+  const inMem = sessionHistory.get(sessionId);
+  if (inMem && inMem.length > 0) return inMem;
+  return recentAgentTurns(2).flatMap((t) => [
+    { role: 'user' as const, content: t.query },
+    { role: 'assistant' as const, content: t.response },
+  ]);
+}
+
+function rememberTurn(sessionId: string, query: string, speech: string): void {
+  if (sessionHistory.size > HISTORY_MAX_SESSIONS) sessionHistory.clear();
+  const prev = sessionHistory.get(sessionId) ?? [];
+  prev.push({ role: 'user', content: query });
+  prev.push({ role: 'assistant', content: speech });
+  sessionHistory.set(sessionId, prev.slice(-HISTORY_MAX_MESSAGES));
+}
 
 interface ToolRoute {
   client: McpContext['servers'][number]['client'];
@@ -74,14 +96,27 @@ async function runToolLoop(
   query: string,
   allowlist: string[] | null,
   mcp: McpContext,
-  trace: TraceEvent[]
+  trace: TraceEvent[],
+  sessionId?: string
 ): Promise<AssistantResponse> {
   const { specs, routes } = buildTools(mcp, allowlist);
+  const history = sessionId ? priorTurns(sessionId) : [];
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
+    ...history,
     { role: 'user', content: query },
   ];
+  const deadline = Date.now() + config.toolDeadlineMs;
   for (let i = 0; i < config.maxToolIterations; i++) {
+    if (Date.now() >= deadline && i > 0) {
+      trace.push({ ts: Date.now(), step: 'tool.deadline' });
+      messages.push({
+        role: 'user',
+        content: 'Die Zeit ist fast um. Antworte JETZT mit dem, was du hast, als finales JSON.',
+      });
+      const final = await chatCompletion(messages);
+      return parseAgentAnswer(final.content ?? '', trace);
+    }
     const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined);
     if (!message.tool_calls || message.tool_calls.length === 0) {
       return parseAgentAnswer(message.content ?? '', trace);
@@ -115,7 +150,9 @@ async function runToolLoop(
 
 async function runAgent(query: VoiceQuery, mcp: McpContext, trace: TraceEvent[]): Promise<AssistantResponse> {
   const system = getPrompt('agent_system') ?? 'Du bist ein hilfreicher deutscher Sprachassistent.';
-  return runToolLoop(system, query.text, null, mcp, trace);
+  const response = await runToolLoop(system, query.text, null, mcp, trace, query.sessionId);
+  rememberTurn(query.sessionId, query.text, response.speech);
+  return response;
 }
 
 async function executeAction(

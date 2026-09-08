@@ -89,6 +89,7 @@ Regeln:
 4. Anreden wie "Smart Pilot", "Voice Assist" oder "Assistent" am Anfang der Anfrage sind kein Teil des Inhalts - behandle nur den Rest als Frage.
 5. Enthält die Anfrage "Zusammenfassung", "Details", "was genau" oder "mehr über": Führe mindestens 3 Tool-Runden aus (Suche -> Übersichtsseite lesen -> mindestens 1-2 konkrete Artikel per web_url_read lesen) und fasse in speech je Thema 1-2 Sätze Inhalt zusammen. Breche NICHT nach der Übersichtsseite ab.
 6. Setze keep_open auf true, wenn die Antwort zu Nachfragen einlädt (Zusammenfassung, Liste, Bericht, mehrteilige Themen, Wettbewerb mehrerer Optionen); false bei einfachen Fakten- oder Geräteantworten.
+7. Du erhältst ggf. früheren Gesprächsverlauf. Anfragen wie "mehr dazu", "was genau", "mehr details" beziehen sich auf das letzte Thema; rufe dann gezielt Tools für Details auf, statt zu wiederholen.
 
 Effiziente Tool-Nutzung (wichtig, jede Runde kostet Sekunden):
 - Plane vorab und rufe Tools so selten wie möglich; Ziel: höchstens 3 Aufrufe, hartes Maximum 5.
@@ -230,6 +231,15 @@ export function getPrompt(key: string): string | undefined {
     | { content: string }
     | undefined;
   return row?.content;
+}
+
+export function recentAgentTurns(limit = 2): { query: string; response: string }[] {
+  const rows = db
+    .prepare(
+      "SELECT query, response FROM logs WHERE route = 'agent' AND response != '' ORDER BY id DESC LIMIT ?"
+    )
+    .all(limit) as { query: string; response: string }[];
+  return rows.reverse();
 }
 
 export function setPrompt(key: string, content: string): void {
