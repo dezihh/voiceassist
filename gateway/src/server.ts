@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import { join } from 'node:path';
 import { config } from './config.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, basicAuthState } from './auth.js';
 import { processQuery } from './core/engine.js';
 import { fromAssistantResponse, toVoiceQuery } from './adapters/alexa.js';
 import { invalidateMcpCache, createClient } from './mcp/registry.js';
@@ -142,21 +142,35 @@ app.post('/alexa', async (req, res) => {
     context?: {
       System?: { application?: { applicationId?: string }; apiAccessToken?: string };
     };
+    session?: { application?: { applicationId?: string }; sessionId?: string };
     request?: { requestId?: string; type?: string; intent?: { name?: string } };
   };
-  const appId = body.context?.System?.application?.applicationId;
+  const appId =
+    body.context?.System?.application?.applicationId ??
+    body.session?.application?.applicationId;
+  const appIdSource = body.context?.System?.application?.applicationId
+    ? 'context'
+    : body.session?.application?.applicationId
+      ? 'session'
+      : 'fehlt';
   const reqType = body.request?.type ?? '';
   const intentName =
     (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
 
   if (getSetting('debug_logging') === '1') {
+    const authState =
+      config.alexaBasicUser && config.alexaBasicPass
+        ? basicAuthState(req.headers.authorization ?? '', config.alexaBasicUser, config.alexaBasicPass)
+        : 'off';
     addLog({
-      sessionId: (body as { session?: { sessionId?: string } }).session?.sessionId ?? 'alexa',
+      sessionId: body.session?.sessionId ?? 'alexa',
       query: JSON.stringify({
         type: reqType,
         intent: intentName,
-        appId: appId ? 'set' : 'fehlt',
+        appId: appId ? appId.slice(0, 30) : 'fehlt',
+        appIdSource,
         skillMatch: appId === config.alexaSkillId,
+        basicAuth: authState,
       }),
       route: `alexa:${reqType || intentName || '?'}`,
       response: '',
@@ -168,6 +182,21 @@ app.post('/alexa', async (req, res) => {
   if (config.alexaSkillId && appId !== config.alexaSkillId) {
     res.status(403).json({ reason: 'Unerwartete applicationId' });
     return;
+  }
+
+  if (config.alexaBasicUser && config.alexaBasicPass && config.alexaBasicMode !== 'off') {
+    const state = basicAuthState(
+      req.headers.authorization ?? '',
+      config.alexaBasicUser,
+      config.alexaBasicPass
+    );
+    if (state !== 'ok' && config.alexaBasicMode === 'enforce') {
+      res.status(401).json({ reason: 'unauthorized' });
+      return;
+    }
+    if (state !== 'ok') {
+      console.warn(`Alexa-BasicAuth ${state} (warn-Modus, Request zugelassen)`);
+    }
   }
 
   // Fast-Paths: einfache Requests ohne Engine-Aufruf (kein LLM-Turn, keine Kosten)

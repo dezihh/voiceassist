@@ -22,4 +22,7 @@ export const config = {
   toolDeadlineMs: Number(process.env.LLM_TOOL_DEADLINE_MS ?? 9000),
   alexaSkillId: process.env.ALEXA_SKILL_ID,
   alexaDirectivesBase: process.env.ALEXA_DIRECTIVES_BASE ?? 'https://api.eu.amazonalexa.com',
+  alexaBasicUser: process.env.ALEXA_BASIC_USER,
+  alexaBasicPass: process.env.ALEXA_BASIC_PASS,
+  alexaBasicMode: process.env.ALEXA_BASIC_MODE ?? 'off',
 };
