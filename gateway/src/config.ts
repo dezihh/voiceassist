@@ -25,4 +25,5 @@ export const config = {
   alexaBasicUser: process.env.ALEXA_BASIC_USER,
   alexaBasicPass: process.env.ALEXA_BASIC_PASS,
   alexaBasicMode: process.env.ALEXA_BASIC_MODE ?? 'off',
+  alexaVerifyMode: process.env.ALEXA_VERIFY_MODE ?? 'off',
 };

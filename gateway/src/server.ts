@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import { join } from 'node:path';
 import { config } from './config.js';
 import { requireAuth, basicAuthState } from './auth.js';
+import { verifyAlexaSignature } from './alexa-verify.js';
 import { processQuery } from './core/engine.js';
 import { fromAssistantResponse, toVoiceQuery } from './adapters/alexa.js';
 import { invalidateMcpCache, createClient } from './mcp/registry.js';
@@ -29,7 +30,14 @@ import {
 } from './db.js';
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(
+  express.json({
+    limit: '1mb',
+    verify: (req, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 function normalizeActionInput(body: Record<string, unknown>): ActionInput {
   const mode = String(body.mode ?? '');
@@ -157,11 +165,23 @@ app.post('/alexa', async (req, res) => {
   const intentName =
     (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
 
+  const basicState =
+    config.alexaBasicUser && config.alexaBasicPass
+      ? basicAuthState(req.headers.authorization ?? '', config.alexaBasicUser, config.alexaBasicPass)
+      : 'off';
+  let sigState = 'off';
+  if (config.alexaVerifyMode !== 'off') {
+    const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+    const result = await verifyAlexaSignature(
+      raw,
+      req.headers['signature'] as string | undefined,
+      req.headers['signaturecertchainurl'] as string | undefined,
+      (body.request as { timestamp?: string } | undefined)?.timestamp
+    );
+    sigState = result.ok ? 'ok' : `invalid:${result.reason}`.slice(0, 80);
+  }
+
   if (getSetting('debug_logging') === '1') {
-    const authState =
-      config.alexaBasicUser && config.alexaBasicPass
-        ? basicAuthState(req.headers.authorization ?? '', config.alexaBasicUser, config.alexaBasicPass)
-        : 'off';
     addLog({
       sessionId: body.session?.sessionId ?? 'alexa',
       query: JSON.stringify({
@@ -170,7 +190,8 @@ app.post('/alexa', async (req, res) => {
         appId: appId ? appId.slice(0, 30) : 'fehlt',
         appIdSource,
         skillMatch: appId === config.alexaSkillId,
-        basicAuth: authState,
+        basicAuth: basicState,
+        sig: sigState,
       }),
       route: `alexa:${reqType || intentName || '?'}`,
       response: '',
@@ -184,18 +205,21 @@ app.post('/alexa', async (req, res) => {
     return;
   }
 
+  if (sigState.startsWith('invalid') && config.alexaVerifyMode === 'enforce') {
+    res.status(401).json({ reason: 'ungueltige Alexa-Signatur' });
+    return;
+  }
+  if (sigState.startsWith('invalid')) {
+    console.warn(`Alexa-Signaturpruefung: ${sigState} (warn-Modus, Request zugelassen)`);
+  }
+
   if (config.alexaBasicUser && config.alexaBasicPass && config.alexaBasicMode !== 'off') {
-    const state = basicAuthState(
-      req.headers.authorization ?? '',
-      config.alexaBasicUser,
-      config.alexaBasicPass
-    );
-    if (state !== 'ok' && config.alexaBasicMode === 'enforce') {
+    if (basicState !== 'ok' && config.alexaBasicMode === 'enforce') {
       res.status(401).json({ reason: 'unauthorized' });
       return;
     }
-    if (state !== 'ok') {
-      console.warn(`Alexa-BasicAuth ${state} (warn-Modus, Request zugelassen)`);
+    if (basicState !== 'ok') {
+      console.warn(`Alexa-BasicAuth ${basicState} (warn-Modus, Request zugelassen)`);
     }
   }
 
