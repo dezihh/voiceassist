@@ -28,6 +28,7 @@
             }
           ],
         "samples": [
+          "{query}",
           "was ist {query}",
           "wie ist {query}",
           "sag mir {query}",
