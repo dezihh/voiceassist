@@ -1,17 +1,33 @@
 name: Deploy to Alexa
 
+# DEAKTIVIERT (08.09.2026): Skill 070bad87 ist Custom (nicht Alexa-hosted) -
+# CodeCommit-Push laeuft nie wieder (SMAPI alexaHosted -> 404).
+# Manifest/Modell-Sync laeuft ueber sync-manifest.yml / sync-model.yml.
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - "alexa/**"
+#       - ".github/workflows/deploy-alexa.yml"
+#   workflow_dispatch:
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - "alexa/**"
-      - ".github/workflows/deploy-alexa.yml"
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: "'DEPLOY' eingeben um manuell zu starten (normalerweise nicht noetig)"
+        default: ""
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Confirm-Guard
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "::error::Abgebrochen: Workflow ist obsolet (Skill ist Custom, kein Alexa-hosted). confirm='DEPLOY' setzt Kenntnis voraus."
+            exit 1
+          fi
       - name: Checkout
         uses: actions/checkout@v4
         with:

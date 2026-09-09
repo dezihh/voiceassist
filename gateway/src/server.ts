@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import { join } from 'node:path';
 import { config } from './config.js';
-import { requireAuth, basicAuthState } from './auth.js';
+import { requireAuth } from './auth.js';
 import { verifyAlexaSignature } from './alexa-verify.js';
 import { processQuery } from './core/engine.js';
 import { fromAssistantResponse, toVoiceQuery } from './adapters/alexa.js';
@@ -165,10 +165,6 @@ app.post('/alexa', async (req, res) => {
   const intentName =
     (body.request as { intent?: { name?: string } } | undefined)?.intent?.name ?? '';
 
-  const basicState =
-    config.alexaBasicUser && config.alexaBasicPass
-      ? basicAuthState(req.headers.authorization ?? '', config.alexaBasicUser, config.alexaBasicPass)
-      : 'off';
   let sigState = 'off';
   if (config.alexaVerifyMode !== 'off') {
     const raw = (req as Request & { rawBody?: Buffer }).rawBody;
@@ -190,7 +186,6 @@ app.post('/alexa', async (req, res) => {
         appId: appId ? appId.slice(0, 30) : 'fehlt',
         appIdSource,
         skillMatch: appId === config.alexaSkillId,
-        basicAuth: basicState,
         sig: sigState,
       }),
       route: `alexa:${reqType || intentName || '?'}`,
@@ -211,16 +206,6 @@ app.post('/alexa', async (req, res) => {
   }
   if (sigState.startsWith('invalid')) {
     console.warn(`Alexa-Signaturpruefung: ${sigState} (warn-Modus, Request zugelassen)`);
-  }
-
-  if (config.alexaBasicUser && config.alexaBasicPass && config.alexaBasicMode !== 'off') {
-    if (basicState !== 'ok' && config.alexaBasicMode === 'enforce') {
-      res.status(401).json({ reason: 'unauthorized' });
-      return;
-    }
-    if (basicState !== 'ok') {
-      console.warn(`Alexa-BasicAuth ${basicState} (warn-Modus, Request zugelassen)`);
-    }
   }
 
   // Fast-Paths: einfache Requests ohne Engine-Aufruf (kein LLM-Turn, keine Kosten)
