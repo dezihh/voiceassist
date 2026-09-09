@@ -18,7 +18,8 @@ export interface ToolSpec {
 
 export async function chatCompletion(
   messages: ChatMessage[],
-  tools?: ToolSpec[]
+  tools?: ToolSpec[],
+  timeoutMs?: number
 ): Promise<ChatMessage> {
   const body: Record<string, unknown> = {
     model: config.llm.model,
@@ -39,6 +40,7 @@ export async function chatCompletion(
       Authorization: `Bearer ${config.llm.apiKey}`,
     },
     body: JSON.stringify(body),
+    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
   });
   if (!res.ok) {
     const text = await res.text();

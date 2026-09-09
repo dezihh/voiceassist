@@ -107,45 +107,55 @@ async function runToolLoop(
     { role: 'user', content: query },
   ];
   const deadline = Date.now() + config.toolDeadlineMs;
+  const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';
   for (let i = 0; i < config.maxToolIterations; i++) {
-    if (Date.now() >= deadline && i > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0 && i > 0) {
       trace.push({ ts: Date.now(), step: 'tool.deadline' });
-      messages.push({
-        role: 'user',
-        content: 'Die Zeit ist fast um. Antworte JETZT mit dem, was du hast, als finales JSON.',
-      });
-      const final = await chatCompletion(messages);
-      return parseAgentAnswer(final.content ?? '', trace);
-    }
-    const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined);
-    if (!message.tool_calls || message.tool_calls.length === 0) {
-      return parseAgentAnswer(message.content ?? '', trace);
-    }
-    messages.push(message);
-    for (const call of message.tool_calls) {
-      let result: string;
       try {
-        const route = routes.get(call.function.name);
-        if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
-        const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
-        if (typeof args.num_results === 'number' && args.num_results > 3) {
-          args.num_results = 3;
-        }
-        const out = await route.client.callTool(route.toolName, args);
-        result = JSON.stringify(out).slice(0, 4000);
-        trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
-      } catch (e) {
-        result = `ERROR: ${String(e)}`;
-        trace.push({
-          ts: Date.now(),
-          step: 'tool.error',
-          detail: { tool: call.function.name, error: String(e) },
-        });
+        const final = await chatCompletion(messages, undefined, 4000);
+        return parseAgentAnswer(final.content ?? '', trace);
+      } catch {
+        return { speech: TimeoutAnswer };
       }
-      messages.push({ role: 'tool', content: result, tool_call_id: call.id });
+    }
+    try {
+      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining > 0 ? remaining : 4000);
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        return parseAgentAnswer(message.content ?? '', trace);
+      }
+      messages.push(message);
+      for (const call of message.tool_calls) {
+        let result: string;
+        try {
+          const route = routes.get(call.function.name);
+          if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
+          const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
+          if (typeof args.num_results === 'number' && args.num_results > 3) {
+            args.num_results = 3;
+          }
+          const out = await route.client.callTool(route.toolName, args);
+          result = JSON.stringify(out).slice(0, 4000);
+          trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
+        } catch (e) {
+          result = `ERROR: ${String(e)}`;
+          trace.push({
+            ts: Date.now(),
+            step: 'tool.error',
+            detail: { tool: call.function.name, error: String(e) },
+          });
+        }
+        messages.push({ role: 'tool', content: result, tool_call_id: call.id });
+      }
+    } catch (e) {
+      if (String(e).includes('TimeoutError') || String(e).includes('abort')) {
+        trace.push({ ts: Date.now(), step: 'tool.deadline' });
+        return { speech: TimeoutAnswer };
+      }
+      throw e;
     }
   }
-  return { speech: 'Das hat zu lange gedauert, bitte versuche es noch einmal.' };
+  return { speech: TimeoutAnswer };
 }
 
 async function runAgent(query: VoiceQuery, mcp: McpContext, trace: TraceEvent[]): Promise<AssistantResponse> {
