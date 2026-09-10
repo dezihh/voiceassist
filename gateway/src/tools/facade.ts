@@ -63,6 +63,7 @@ function compactEntity(e: HaEntity): Record<string, unknown> {
     name: e.name,
     state: e.state,
   };
+  if (e.area) out.area = e.area;
   if (e.unit) out.unit = e.unit;
   if (Object.keys(e.attributes).length > 0) out.attributes = e.attributes;
   return out;
