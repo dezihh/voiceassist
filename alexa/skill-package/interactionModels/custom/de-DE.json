@@ -24,52 +24,12 @@
           "slots": [
             {
               "name": "query",
-              "type": "AMAZON.SearchQuery"
+              "type": "AMAZON.Person"
             }
           ],
-        "samples": [
-          "eine {query}",
-          "einen {query}",
-          "einer {query}",
-          "einem {query}",
-          "ein {query}",
-          "der {query}",
-          "die {query}",
-          "das {query}",
-          "dem {query}",
-          "den {query}",
-          "meine {query}",
-          "meinen {query}",
-          "mein {query}",
-          "es {query}",
-          "jetzt {query}",
-          "was ist {query}",
-          "wie ist {query}",
-          "sag mir {query}",
-          "sage {query}",
-          "gib mir {query}",
-          "frage {query}",
-          "frage mich {query}",
-          "frage nach {query}",
-          "nach {query}",
-          "über {query}",
-          "beantworte {query}",
-          "erkläre mir {query}",
-          "ich möchte wissen {query}",
-          "stell eine Frage zu {query}",
-          "was weißt du über {query}",
-          "was gibt es neues zu {query}",
-          "was gibt es neues zum thema {query}",
-          "was gibt es neues über {query}",
-          "gibt es neues zu {query}",
-          "gibt es neuigkeiten über {query}",
-          "erzähl mir etwas über {query}",
-          "schalte {query}",
-          "mache {query}",
-          "stelle {query}",
-          "mach {query}",
-          "bitte {query}"
-        ]
+          "samples": [
+            "{query}"
+          ]
         }
       ],
       "types": []
