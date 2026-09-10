@@ -46,6 +46,8 @@ interface ToolRoute {
   toolName: string;
 }
 
+const LLM_BLOCKED_TOOLS = new Set(['googe_ai', 'gargedoor_open_script', '_433_gray4_off', '_433_gray4_on', 'XXXXXXXXXXXXXXhausstatus']);
+
 function buildTools(
   mcp: McpContext,
   allowlist: string[] | null
@@ -55,13 +57,14 @@ function buildTools(
   for (const server of mcp.servers) {
     for (const def of server.tools) {
       const key = routes.has(def.name) ? `${server.name}.${def.name}` : def.name;
+      if (LLM_BLOCKED_TOOLS.has(def.name)) continue;
       if (allowlist && !allowlist.includes(def.name) && !allowlist.includes(key)) continue;
       routes.set(key, { client: server.client, toolName: def.name });
       specs.push({
         type: 'function',
         function: {
           name: key,
-          description: def.description ?? '',
+          description: (def.description ?? '').slice(0, 160),
           parameters: def.inputSchema ?? { type: 'object' },
         },
       });
@@ -120,7 +123,7 @@ async function runToolLoop(
           args.num_results = 3;
         }
         const out = await route.client.callTool(route.toolName, args);
-        result = JSON.stringify(out).slice(0, 4000);
+        result = JSON.stringify(out).slice(0, 2000);
         trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
       } catch (e) {
         result = `ERROR: ${String(e)}`;

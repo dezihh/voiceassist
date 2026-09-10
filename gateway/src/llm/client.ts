@@ -25,6 +25,7 @@ export async function chatCompletion(
     model: config.llm.model,
     messages,
     max_tokens: config.llm.maxTokens,
+    temperature: 0.2,
   };
   if (tools && tools.length > 0) {
     body.tools = tools;
