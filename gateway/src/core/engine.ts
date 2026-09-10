@@ -108,60 +108,64 @@ async function runToolLoop(
   ];
   const overallDeadline = Date.now() + config.toolDeadlineMs * 2;
   const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';
-  for (let i = 0; i < config.maxToolIterations; i++) {
-    const remaining = Math.min(
-      config.toolDeadlineMs,
-      Math.max(overallDeadline - Date.now(), 5000)
-    );
-    try {
-      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining);
-      if (!message.tool_calls || message.tool_calls.length === 0) {
-        return parseAgentAnswer(message.content ?? '', trace);
-      }
-      messages.push(message);
-      for (const call of message.tool_calls) {
-        let result: string;
-        try {
-          const route = routes.get(call.function.name);
-          if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
-          const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
-          if (typeof args.num_results === 'number' && args.num_results > 3) {
-            args.num_results = 3;
-          }
-          const out = await route.client.callTool(route.toolName, args);
-          result = JSON.stringify(out).slice(0, 4000);
-          trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
-        } catch (e) {
-          result = `ERROR: ${String(e)}`;
-          trace.push({
-            ts: Date.now(),
-            step: 'tool.error',
-            detail: { tool: call.function.name, error: String(e) },
-          });
+  const runTools = async (message: ChatMessage): Promise<void> => {
+    messages.push(message);
+    for (const call of message.tool_calls ?? []) {
+      let result: string;
+      try {
+        const route = routes.get(call.function.name);
+        if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
+        const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
+        if (typeof args.num_results === 'number' && args.num_results > 3) {
+          args.num_results = 3;
         }
-        messages.push({ role: 'tool', content: result, tool_call_id: call.id });
+        const out = await route.client.callTool(route.toolName, args);
+        result = JSON.stringify(out).slice(0, 4000);
+        trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
+      } catch (e) {
+        result = `ERROR: ${String(e)}`;
+        trace.push({
+          ts: Date.now(),
+          step: 'tool.error',
+          detail: { tool: call.function.name, error: String(e) },
+        });
       }
-    } catch (e) {
-      if (String(e).includes('TimeoutError') || String(e).includes('abort')) {
-        trace.push({ ts: Date.now(), step: 'llm.timeout', detail: { round: i } });
-        if (i === 0) {
-          try {
-            const retry = await chatCompletion(messages, specs.length > 0 ? specs : undefined, 7000);
-            if (!retry.tool_calls || retry.tool_calls.length === 0) {
-              return parseAgentAnswer(retry.content ?? '', trace);
-            }
-            messages.push(retry);
-            continue;
-          } catch {
-            trace.push({ ts: Date.now(), step: 'tool.deadline' });
-            return { speech: TimeoutAnswer };
-          }
-        }
-        trace.push({ ts: Date.now(), step: 'tool.deadline' });
-        return { speech: TimeoutAnswer };
-      }
-      throw e;
+      messages.push({ role: 'tool', content: result, tool_call_id: call.id });
     }
+  };
+  for (let i = 0; i < config.maxToolIterations; i++) {
+    if (i > 0 && Date.now() >= overallDeadline) {
+      trace.push({ ts: Date.now(), step: 'tool.deadline' });
+      return { speech: TimeoutAnswer };
+    }
+    const remaining = Math.min(config.toolDeadlineMs, Math.max(overallDeadline - Date.now(), 5000));
+    let message: ChatMessage;
+    try {
+      message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining);
+    } catch (e) {
+      if (!(String(e).includes('TimeoutError') || String(e).includes('abort'))) throw e;
+      trace.push({ ts: Date.now(), step: 'llm.timeout', detail: { round: i } });
+      if (i === 0) {
+        try {
+          const retry = await chatCompletion(messages, specs.length > 0 ? specs : undefined, 7000);
+          if (!retry.tool_calls || retry.tool_calls.length === 0) {
+            return parseAgentAnswer(retry.content ?? '', trace);
+          }
+          await runTools(retry);
+          const final = await chatCompletion(messages, undefined, 7000);
+          return parseAgentAnswer(final.content ?? '', trace);
+        } catch (e2) {
+          trace.push({ ts: Date.now(), step: 'tool.deadline', detail: String(e2).slice(0, 60) });
+          return { speech: TimeoutAnswer };
+        }
+      }
+      trace.push({ ts: Date.now(), step: 'tool.deadline' });
+      return { speech: TimeoutAnswer };
+    }
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      return parseAgentAnswer(message.content ?? '', trace);
+    }
+    await runTools(message);
   }
   return { speech: TimeoutAnswer };
 }
