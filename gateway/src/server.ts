@@ -395,6 +395,8 @@ app.listen(config.port, () => {
   console.log(`VoiceAssist Gateway auf Port ${config.port}`);
 });
 
-setInterval(() => {
-  chatCompletion([{ role: 'user', content: 'OK' }], undefined, 15000).catch(() => {});
-}, 120_000).unref();
+if (process.env.LLM_KEEPALIVE_MS !== '0') {
+  setInterval(() => {
+    chatCompletion([{ role: 'user', content: 'OK' }], undefined, 15000).catch(() => {});
+  }, Number(process.env.LLM_KEEPALIVE_MS ?? 120_000)).unref();
+}

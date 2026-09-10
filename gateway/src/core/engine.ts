@@ -106,26 +106,15 @@ async function runToolLoop(
     ...history,
     { role: 'user', content: query },
   ];
-  const deadline = Date.now() + config.toolDeadlineMs;
+  const overallDeadline = Date.now() + config.toolDeadlineMs * 2;
   const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';
   for (let i = 0; i < config.maxToolIterations; i++) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0 && i > 0) {
-      trace.push({ ts: Date.now(), step: 'tool.deadline' });
-      try {
-        const final = await chatCompletion(messages, undefined, 6000);
-        return parseAgentAnswer(final.content ?? '', trace);
-      } catch {
-        try {
-          const final = await chatCompletion(messages, undefined, 6000);
-          return parseAgentAnswer(final.content ?? '', trace);
-        } catch {
-          return { speech: TimeoutAnswer };
-        }
-      }
-    }
+    const remaining = Math.min(
+      config.toolDeadlineMs,
+      Math.max(overallDeadline - Date.now(), 5000)
+    );
     try {
-      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining > 0 ? remaining : 5000);
+      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining);
       if (!message.tool_calls || message.tool_calls.length === 0) {
         return parseAgentAnswer(message.content ?? '', trace);
       }
