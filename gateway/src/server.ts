@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { requireAuth } from './auth.js';
 import { verifyAlexaSignature } from './alexa-verify.js';
 import { processQuery } from './core/engine.js';
+import { chatCompletion } from './llm/client.js';
 import { fromAssistantResponse, toVoiceQuery } from './adapters/alexa.js';
 import { invalidateMcpCache, createClient } from './mcp/registry.js';
 import type { ActionMode } from './types.js';
@@ -393,3 +394,7 @@ app.use('/admin', express.static(join(process.cwd(), 'web')));
 app.listen(config.port, () => {
   console.log(`VoiceAssist Gateway auf Port ${config.port}`);
 });
+
+setInterval(() => {
+  chatCompletion([{ role: 'user', content: 'OK' }], undefined, 15000).catch(() => {});
+}, 120_000).unref();

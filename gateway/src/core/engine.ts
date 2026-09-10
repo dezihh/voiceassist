@@ -113,14 +113,19 @@ async function runToolLoop(
     if (remaining <= 0 && i > 0) {
       trace.push({ ts: Date.now(), step: 'tool.deadline' });
       try {
-        const final = await chatCompletion(messages, undefined, 4000);
+        const final = await chatCompletion(messages, undefined, 6000);
         return parseAgentAnswer(final.content ?? '', trace);
       } catch {
-        return { speech: TimeoutAnswer };
+        try {
+          const final = await chatCompletion(messages, undefined, 6000);
+          return parseAgentAnswer(final.content ?? '', trace);
+        } catch {
+          return { speech: TimeoutAnswer };
+        }
       }
     }
     try {
-      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining > 0 ? remaining : 4000);
+      const message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining > 0 ? remaining : 5000);
       if (!message.tool_calls || message.tool_calls.length === 0) {
         return parseAgentAnswer(message.content ?? '', trace);
       }
@@ -149,6 +154,20 @@ async function runToolLoop(
       }
     } catch (e) {
       if (String(e).includes('TimeoutError') || String(e).includes('abort')) {
+        trace.push({ ts: Date.now(), step: 'llm.timeout', detail: { round: i } });
+        if (i === 0) {
+          try {
+            const retry = await chatCompletion(messages, specs.length > 0 ? specs : undefined, 7000);
+            if (!retry.tool_calls || retry.tool_calls.length === 0) {
+              return parseAgentAnswer(retry.content ?? '', trace);
+            }
+            messages.push(retry);
+            continue;
+          } catch {
+            trace.push({ ts: Date.now(), step: 'tool.deadline' });
+            return { speech: TimeoutAnswer };
+          }
+        }
         trace.push({ ts: Date.now(), step: 'tool.deadline' });
         return { speech: TimeoutAnswer };
       }
