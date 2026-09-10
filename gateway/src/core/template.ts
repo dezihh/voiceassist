@@ -1,5 +1,6 @@
 import nunjucks from 'nunjucks';
 import type { McpContext } from '../mcp/registry.js';
+import { getStatesSnapshot } from '../ha/states.js';
 import type { AssistantResponse, TraceEvent } from '../types.js';
 
 const env = new nunjucks.Environment(null, { autoescape: false });
@@ -42,7 +43,7 @@ function findToolExact(
 ): { server: McpContext['servers'][number]; toolName: string } | undefined {
   for (const server of mcp.servers) {
     const tool = server.tools.find((t) => t.name === toolName);
-    if (tool) return { server, toolName };
+    if (tool) return { server, toolName: tool.name };
   }
   return undefined;
 }
@@ -90,7 +91,6 @@ async function preheat(
   const stateMap = new Map<string, string | null>();
   const entityMap = new Map<string, unknown[]>();
   const callMap = new Map<string, string | null>();
-  const stateTool = findTool(mcp, [/state/i]);
   const listTool = findTool(mcp, [/search|lookup|entit/i]);
 
   for (const toolName of calls) {
@@ -110,9 +110,10 @@ async function preheat(
   for (const entityId of states) {
     if (stateMap.has(entityId)) continue;
     try {
-      if (!stateTool) throw new Error('kein State-Tool gefunden');
-      const result = await stateTool.server.client.callTool(stateTool.toolName, { entity_id: entityId });
-      stateMap.set(entityId, extractText(result));
+      const entities = await getStatesSnapshot();
+      const entity = entities.find((e) => e.entity_id === entityId);
+      if (!entity) throw new Error(`Entity ${entityId} nicht gefunden`);
+      stateMap.set(entityId, entity.state);
       trace.push({ ts: Date.now(), step: 'template.state', detail: { entityId } });
     } catch (e) {
       trace.push({ ts: Date.now(), step: 'template.state.error', detail: { entityId, error: String(e) } });

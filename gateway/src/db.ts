@@ -80,19 +80,19 @@ db.prepare(
   'INSERT OR IGNORE INTO prompts (key, content) VALUES (?, ?)'
 ).run(
   'agent_system',
-  `Du bist ein deutscher Sprachassistent für Smart-Home und Alltagsfragen.
-
-Vorgehen: Prüfe jede Anfrage zuerst auf passende Tools und rufe sie auf, wenn sie Infos liefern (Messwerte, Zustände, Skripte, Suche). Antworte erst, wenn du genug weißt - mit Tools geht das schnell.
+  `Du bist Smart Pilot, ein deutscher Sprachassistent für Home Assistant über Alexa.
 
 Deine FINALE Antwort (sobald keine Tool-Aufrufe mehr nötig) ist AUSSCHLIESSLICH ein JSON-Objekt: {"needs_clarification": <true|false>, "speech": "<Antwort>", "keep_open": <true|false>}.
-Die speech ist kurz, präzise und sprechbar (keine Listen, keine Fachsymbole ausschreiben). needs_clarification=true nur bei echter Mehrdeutigkeit, dann kurze Rückfrage mit genau einem Antwortbeispiel. keep_open=true nur bei nachfragen-einladenden Antworten (Zusammenfassung, Liste, Bericht); false bei einfachen Fakten.
+Die speech ist kurz, präzise und sprechbar (keine Listen, Zahlen wie "22,4 Grad"). needs_clarification=true nur bei echter Mehrdeutigkeit, dann kurze Rückfrage mit genau einem Antwortbeispiel. keep_open=true nur bei nachfragen-einladenden Antworten (Zusammenfassung, Liste, Bericht). Stelle KEINE Rückfragen wie "Möchtest du mehr erfahren?".
 Anreden am Anfang ("Smart Pilot", "Voice Assist") sind kein Teil der Frage. "mehr dazu" bezieht sich auf das letzte Thema.
 
-Tool-Regeln (sparsam: Ziel max. 3 Aufrufe):
-- Messwerte/Zustände (Temperatur, Füllstand, Verbrauch, offen/zu, an/aus): NIEMALS aus eigenem Wissen, IMMER GetLiveContext. Rufe dabei MIT area (Raum, z. B. "Schlafzimmer") UND passendem domain auf (allgemein ["sensor", "climate"]); NUR bei einzelnen Geräten (z. B. "Zisterne") zusätzlich name. Liefert der erste Aufruf nichts: EIN zweiter Aufruf mit demselben domain OHNE name und ohne area, dann aus dem Ergebnis den passenden Entity ableiten. Immer noch nichts: kurze Rückfrage.
-- Geräte schalten: HassTurnOn/HassTurnOff mit name.
-- Skripte (z. B. hausstatus): direkt aufrufen, Ergebnis sinngemäß wiedergeben.
-- Nachrichten/Suche: sofort searxng_web_search (language "de", time_range "week" wenn zeitlich relevant). Antwort mit 2-3 konkreten Titeln/Fakten, niemals nur Verweise. Vertiefung: web_url_read auf 1-2 Artikel.`
+Tool-Regeln (sparsam: genug gewusst -> sofort antworten):
+- Messwerte/Zustände (Temperatur, Füllstand, Verbrauch, an/aus): NIEMALS aus eigenem Wissen. find_ha_entities mit Stichworten - die Treffer enthalten den AKTUELLEN Zustand, antworte damit direkt (bei Thermostaten: Attribut current_temperature). get_ha_state nur für eine konkrete einzelne entity_id.
+- Geräte schalten (Licht, Schalter, Rolladen, Klima): entity_id über find_ha_entities ermitteln, dann control_device mit der exakten entity_id.
+- Hausstatus: get_house_status, Bericht sinngemäß wiedergeben.
+- Benzinpreis: get_fuel_prices.
+- Nachrichten/Suche: sofort search_web (time_range "week" bei Nachrichten; bei Finanzquellen gezielt, z. B. "onvista news"). Antworte mit 2-3 konkreten Titeln/Fakten aus den Snippets oder dem Seiteninhalt, niemals nur mit Verweisen.
+- web_url_read nur für eine explizit gewünschte konkrete Seite.`
 );
 
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('warteton', 'phrase');
@@ -100,6 +100,30 @@ db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuz
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', '0');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_keywords', 'zusammenfassung,neuigkeiten,liste,bericht,news,tipps,hintergründe');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('debug_logging', '0');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('facade_mode', 'facade');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuel_sensor', 'sensor.nordoel_sieker_landstrasse_178_super_e10');
+
+for (const action of [
+  {
+    name: 'benzinpreis',
+    triggers: ['benzinpreis', 'tankstelle', 'nordöl', 'sprit', 'super e10'],
+    template: `Super E10 bei Nordöl kostet derzeit {{ ha.state('sensor.nordoel_sieker_landstrasse_178_super_e10') | replace('.', ',') }} Euro.`,
+  },
+  {
+    name: 'bmw_netzladung_an',
+    triggers: ['bmw netzladung an', 'lade modus netz'],
+    template: `{{ ha.call('bmw_netzladung_an') }}`,
+  },
+  {
+    name: 'bmw_netzladung_aus',
+    triggers: ['bmw netzladung aus', 'lade modus pv'],
+    template: `{{ ha.call('bmw_netzladung_aus') }}`,
+  },
+]) {
+  db.prepare(
+    "INSERT OR IGNORE INTO actions (name, mode, trigger_phrases, template) VALUES (?, 'deterministic', ?, ?)"
+  ).run(action.name, JSON.stringify(action.triggers), action.template);
+}
 
 export function parseAction(row: ActionRow): ParsedAction {
   let triggers: string[] = [];

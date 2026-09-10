@@ -8,6 +8,7 @@ import {
 } from '../db.js';
 import { chatCompletion, type ChatMessage, type ToolSpec } from '../llm/client.js';
 import { getMcpContext, type McpContext } from '../mcp/registry.js';
+import { facadeTools, type FacadeTool } from '../tools/facade.js';
 import { routeAction, type RouteMatch } from './router.js';
 import { renderActionTemplate } from './template.js';
 import type {
@@ -41,25 +42,27 @@ function rememberTurn(sessionId: string, query: string, speech: string): void {
   sessionHistory.set(sessionId, prev.slice(-HISTORY_MAX_MESSAGES));
 }
 
-interface ToolRoute {
-  client: McpContext['servers'][number]['client'];
-  toolName: string;
-}
+type ToolRoute =
+  | { kind: 'mcp'; client: McpContext['servers'][number]['client']; toolName: string }
+  | { kind: 'facade'; tool: FacadeTool };
+
+type ToolRouteMap = { specs: ToolSpec[]; routes: Map<string, ToolRoute> };
 
 const LLM_BLOCKED_TOOLS = new Set(['googe_ai', 'gargedoor_open_script', '_433_gray4_off', '_433_gray4_on', 'XXXXXXXXXXXXXXhausstatus']);
 
-function buildTools(
+function buildMcpTools(
   mcp: McpContext,
-  allowlist: string[] | null
-): { specs: ToolSpec[]; routes: Map<string, ToolRoute> } {
-  const specs: ToolSpec[] = [];
-  const routes = new Map<string, ToolRoute>();
+  allowlist: string[] | null,
+  routes: Map<string, ToolRoute>,
+  specs: ToolSpec[]
+): void {
   for (const server of mcp.servers) {
     for (const def of server.tools) {
       const key = routes.has(def.name) ? `${server.name}.${def.name}` : def.name;
       if (LLM_BLOCKED_TOOLS.has(def.name)) continue;
+      if (routes.has(key)) continue;
       if (allowlist && !allowlist.includes(def.name) && !allowlist.includes(key)) continue;
-      routes.set(key, { client: server.client, toolName: def.name });
+      routes.set(key, { kind: 'mcp', client: server.client, toolName: def.name });
       specs.push({
         type: 'function',
         function: {
@@ -70,11 +73,40 @@ function buildTools(
       });
     }
   }
+}
+
+function buildTools(
+  mcp: McpContext,
+  allowlist: string[] | null
+): ToolRouteMap {
+  const mode = getSetting('facade_mode') ?? 'facade';
+  const routes = new Map<string, ToolRoute>();
+  const specs: ToolSpec[] = [];
+  if (mode === 'facade' || mode === 'both') {
+    for (const tool of facadeTools) {
+      if (allowlist && !allowlist.includes(tool.name)) continue;
+      routes.set(tool.name, { kind: 'facade', tool });
+      specs.push({
+        type: 'function',
+        function: { name: tool.name, description: tool.description.slice(0, 300), parameters: tool.parameters },
+      });
+    }
+  }
+  if (mode === 'raw' || mode === 'both') {
+    buildMcpTools(mcp, allowlist, routes, specs);
+  }
   return { specs, routes };
 }
 
 function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantResponse {
-  const text = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+  const filtered = content
+    .replace(/<\|?tool_call>[\s\S]*?(?:<tool_call\|>|<\|end_of_turn\|>|$)/gi, '')
+    .replace(/<\|[^>]*\|>/g, '')
+    .trim();
+  if (filtered !== content.trim()) {
+    trace.push({ ts: Date.now(), step: 'agent.leak_filtered', detail: { lenBefore: content.length, lenAfter: filtered.length } });
+  }
+  const text = filtered.replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   if (text.startsWith('{')) {
     try {
       const parsed = JSON.parse(text) as { needs_clarification?: boolean; speech?: string; keep_open?: boolean };
@@ -112,7 +144,12 @@ async function runToolLoop(
   const overallDeadline = Date.now() + config.toolDeadlineMs * 2;
   const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';
   const runTools = async (message: ChatMessage): Promise<void> => {
-    messages.push(message);
+    messages.push({
+      role: 'assistant',
+      content: message.content ?? null,
+      ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+      ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+    });
     for (const call of message.tool_calls ?? []) {
       let result: string;
       try {
@@ -122,7 +159,10 @@ async function runToolLoop(
         if (typeof args.num_results === 'number' && args.num_results > 3) {
           args.num_results = 3;
         }
-        const out = await route.client.callTool(route.toolName, args);
+        const out =
+          route.kind === 'facade'
+            ? await route.tool.run(args, mcp)
+            : await route.client.callTool(route.toolName, args);
         result = JSON.stringify(out).slice(0, 2000);
         trace.push({ ts: Date.now(), step: 'tool.call', detail: { tool: call.function.name, args } });
       } catch (e) {

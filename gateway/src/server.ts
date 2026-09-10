@@ -243,6 +243,20 @@ app.post('/alexa', async (req, res) => {
 
   try {
     const query = toVoiceQuery(req.body as Record<string, never>);
+    if (!query.text || query.text.trim().length === 0) {
+      if (getSetting('debug_logging') === '1') {
+        addLog({
+          sessionId: query.sessionId,
+          query: '',
+          route: 'alexa:empty',
+          response: ALEXA_FALLBACK,
+          durationMs: 0,
+          trace: [],
+        });
+      }
+      res.json(fromAssistantResponse({ speech: ALEXA_FALLBACK, followUp: true }));
+      return;
+    }
     const result = await processQuery(query);
     res.json(fromAssistantResponse(result.response));
   } catch (e) {

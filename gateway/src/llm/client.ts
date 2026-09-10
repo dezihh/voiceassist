@@ -9,6 +9,7 @@ export interface ChatMessage {
     function: { name: string; arguments: string };
   }[];
   tool_call_id?: string;
+  reasoning_content?: string;
 }
 
 export interface ToolSpec {
@@ -47,8 +48,15 @@ export async function chatCompletion(
     const text = await res.text();
     throw new Error(`LLM ${res.status}: ${text.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { choices?: { message?: ChatMessage }[] };
+  const data = (await res.json()) as {
+    choices?: { message?: { role?: string; content?: string | null; tool_calls?: ChatMessage['tool_calls']; reasoning_content?: string } }[];
+  };
   const message = data.choices?.[0]?.message;
   if (!message) throw new Error('LLM: leere Antwort');
-  return message;
+  return {
+    role: (message.role ?? 'assistant') as ChatMessage['role'],
+    content: message.content ?? null,
+    ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+    ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+  };
 }
