@@ -2,6 +2,7 @@ export type ActionMode = 'deterministic' | 'llm' | 'hybrid' | 'search_summary';
 
 export interface SearchSummaryConfig {
   search_query: string;
+  keep_open?: boolean;
   fetch?: { url: string; pick?: string; fields?: string[]; max?: number };
   urls?: string[];
   url_chars?: number;

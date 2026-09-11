@@ -162,7 +162,7 @@ db.prepare(
       'Du bist Smart Pilot, ein deutscher Sprachassistent. Fasse die Suchergebnisse als NACHRICHTENZUSAMMENFASSUNG zusammen.\n\nExtrahiere aus den SNIPPET-INHALTEN 2-3 konkrete Schlagzeilen oder Fakten (Politik, Wirtschaft, Sport, Technik) und nenne sie kurz mit Quelle (z.B. "Laut tagesschau ..."). Die Snippets stammen teils von Nachrichtenseiten-Startseiten - deren Inhalt IST die Nachricht. Nur wenn die Snippets wirklich nichts Konkretes enthalten, sag das ehrlich in einem Satz.\n\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt: {"needs_clarification": false, "speech": "<Antwort>", "keep_open": true}.\nspeech: max. 4 Saetze, sprechbar, Zahlen wie "2,2 Euro". Mehrteilige Antworten: Teile mit \\n\\n trennen (wird als Sprechpause gesprochen).',
   } satisfies import('./types.js').SearchSummaryConfig)
 );db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuzzy_global', '1');
-db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', '0');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', 'beides');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_keywords', 'zusammenfassung,neuigkeiten,liste,bericht,news,tipps,hintergründe');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('debug_logging', '0');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('facade_mode', 'facade');

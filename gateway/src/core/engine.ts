@@ -397,7 +397,8 @@ async function executeSearchSummary(
     trace.push({ ts: Date.now(), step: 'action.model_fallback', detail: String(e).slice(0, 120) });
     message = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.fallback_model);
   }
-  return parseAgentAnswer(message.content ?? '', trace);
+  const response = parseAgentAnswer(message.content ?? '', trace);
+  return { ...response, keepOpen: cfg.keep_open !== false };
 }
 
 async function executeAction(
@@ -451,6 +452,7 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     });
     try {
       response = await executeAction(match.action, query, mcp, trace);
+      rememberTurn(query.sessionId, query.text, response.speech);
     } catch (e) {
       trace.push({ ts: Date.now(), step: 'action.error', detail: String(e) });
       response = { speech: FallbackError };
