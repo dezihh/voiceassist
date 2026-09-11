@@ -1,0 +1,67 @@
+name: Sync Manifest (SMAPI, hosted read-modify-write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill_id:
+        description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
+        default: ""
+      add_apl:
+        description: "1 = APL-Interface ergaenzen (falls fehlt)"
+        default: "1"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore ASK CLI auth files
+        run: |
+          mkdir -p ~/.ask/scripts
+          cp .github/ask/git-credential-helper ~/.ask/scripts/git-credential-helper
+          cp .github/ask/ask-pre-push ~/.ask/scripts/ask-pre-push
+          chmod +x ~/.ask/scripts/git-credential-helper ~/.ask/scripts/ask-pre-push
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+
+      - name: Manifest lesen, APL ergaenzen, PUT, Build pollen
+        env:
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
+          ADD_APL: ${{ inputs.add_apl }}
+        run: |
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          BASE="${ask_smapi_api}/v1/skills/${SKILL_ID}/stages/development/manifest"
+          HTTP=$(curl -s -D /tmp/h.txt -o /tmp/m.json -w "%{http_code}" -H "Authorization: Bearer ${ACCESS}" "${BASE}")
+          echo "GET -> HTTP ${HTTP}"
+          python3 - "$ADD_APL" <<'PYEOF'
+          import json, sys
+          m = json.load(open("/tmp/m.json"))
+          interfaces = m.get("manifest", {}).get("apis", {}).get("custom", {}).get("interfaces", [])
+          names = [i.get("type") for i in interfaces]
+          print("Interfaces:", names)
+          if sys.argv[1] == "1" and "ALEXA_PRESENTATION_APL" not in names:
+              interfaces.append({"type": "ALEXA_PRESENTATION_APL", "runtimeVersion": "1.3"})
+              json.dump(m, open("/tmp/m_new.json", "w"), ensure_ascii=False)
+              print("APL ergaenzt")
+          else:
+              open("/tmp/m_new.json", "w").write("")
+              print("kein PUT noetig")
+          PYEOF
+          if [ -s /tmp/m_new.json ]; then
+            ETAG=$(grep -i '^etag:' /tmp/h.txt | tr -d '\r' | cut -d' ' -f2)
+            HTTP=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "Authorization: Bearer ${ACCESS}" -H "Content-Type: application/json" -H "If-Match: ${ETAG}" --data-binary @/tmp/m_new.json "${BASE}")
+            echo "PUT -> HTTP ${HTTP}"; head -c 400 /tmp/put.json; echo ""
+            echo "=== Build-Status pollen (resource=manifest):"
+            for i in $(seq 1 18); do
+              sleep 5
+              S=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/status?resource=manifest" | python3 -c 'import json,sys; d=json.load(sys.stdin); ms=d.get("manifest",{}); print(next(iter(ms.values())).get("lastUpdateRequest",{}).get("status","?") if ms else "?")' 2>/dev/null || echo UNKNOWN)
+              echo "  poll $i: ${S}"
+              if [ "${S}" = "SUCCEEDED" ] || [ "${S}" = "FAILURE" ]; then break; fi
+            done
+          fi

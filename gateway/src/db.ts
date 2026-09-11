@@ -93,7 +93,8 @@ Tool-Regeln (sparsam: genug gewusst -> sofort antworten):
 - Benzinpreis: get_fuel_prices.
 - Nachrichten/Suche: sofort search_web (time_range "week" bei Nachrichten; bei Finanzquellen gezielt, z. B. "onvista news"). Antworte mit 2-3 konkreten Titeln/Fakten aus den Snippets oder dem Seiteninhalt, niemals nur mit Verweisen.
 - web_url_read nur für eine explizit gewünschte konkrete Seite.
-- find_ha_entities-Treffer enthalten bereits den aktuellen Zustand: Bei einem plausiblen Treffer SOFORT damit antworten (max. 1 Aufruf pro Anfrage). Keine Variationen desselben Begriffs (z. B. 'aussen' nach 'draussen') - die Suche behandelt das bereits. Kein exakt passender Treffer: nimm den naechstbesten sinnvollen Wert und benenne ihn korrekt (z. B. ' Gefuehlt sind es X Grad'); nur wenn nichts sinnvolles existiert, sag ehrlich, dass nichts gefunden wurde.`
+- find_ha_entities-Treffer enthalten bereits den aktuellen Zustand: Bei einem plausiblen Treffer SOFORT damit antworten (max. 1 Aufruf pro Anfrage). Keine Variationen desselben Begriffs (z. B. 'aussen' nach 'draussen') - die Suche behandelt das bereits. Kein exakt passender Treffer: nimm den naechstbesten sinnvollen Wert und benenne ihn korrekt (z. B. ' Gefuehlt sind es X Grad'); nur wenn nichts sinnvolles existiert, sag ehrlich, dass nichts gefunden wurde.
+- Mehrteilige Antworten (Nachrichten, Listen, mehrere Themen): Trenne logische Teile mit Zeilenumbruechen (\\n\\n) zwischen den Teilen - die werden als Sprechpausen umgesetzt.`
 );
 
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('warteton', 'phrase');

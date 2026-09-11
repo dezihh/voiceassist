@@ -13,6 +13,7 @@ from ask_sdk_core.api_client import DefaultApiClient
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_model.services.directive import SendDirectiveRequest, Header, SpeakDirective
 from ask_sdk_model.ui import SimpleCard
+from ask_sdk_model.interfaces.alexa.presentation.apl import RenderDocumentDirective
 from xml.sax.saxutils import escape
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,64 @@ def strip_ssml(text):
 
 CARD_TITLE = "MeinHelfer"
 
+# APL-Layout: kontrollierte Schriftgroesse (28dp) + Scroll fuer lange Texte
+APL_DOCUMENT = {
+    "type": "APL",
+    "version": "2023.1",
+    "theme": "dark",
+    "mainTemplate": {
+        "parameters": ["payload"],
+        "items": [{
+            "type": "Container",
+            "width": "100%",
+            "height": "100%",
+            "padding": "48dp",
+            "items": [
+                {
+                    "type": "Text",
+                    "text": "${payload.title}",
+                    "fontSize": "26dp",
+                    "fontWeight": "bold",
+                    "color": "#00CAFF",
+                    "shrink": 0,
+                    "paddingBottom": "28dp",
+                },
+                {
+                    "type": "ScrollView",
+                    "width": "100%",
+                    "grow": 1,
+                    "items": [{
+                        "type": "Text",
+                        "text": "${payload.text}",
+                        "fontSize": "28dp",
+                        "lineHeight": 1.4,
+                        "color": "#EEEEEE",
+                    }],
+                },
+            ],
+        }],
+    },
+}
+
+
+def supports_apl(handler_input):
+    try:
+        device = handler_input.request_envelope.context.system.device
+        interfaces = device.supported_interfaces if device else None
+        return bool(interfaces and interfaces.alexa_presentation_apl)
+    except AttributeError:
+        return False
+
+
+def render_apl(handler_input, title, text):
+    handler_input.response_builder.add_directive(
+        RenderDocumentDirective(
+            token="mainhelfer-display-{}".format(int(time.time() * 1000)),
+            document=APL_DOCUMENT,
+            datasources={"payload": {"title": title, "text": text}},
+        )
+    )
+
 
 def call_gateway(query, session_id, user_id):
     if not gateway_url:
@@ -82,7 +141,9 @@ def call_gateway(query, session_id, user_id):
     speech = resp.get("speech") or SPEAK_ERROR
     follow_up = bool(resp.get("followUp"))
     ssml = bool(resp.get("ssml")) or speech.strip().startswith("<speak")
-    return speech, follow_up, ssml
+    display = resp.get("display") or {}
+    display_text = (display.get("text") or "").strip() or None
+    return speech, follow_up, ssml, display_text
 
 
 def send_progressive(handler_input, request, phrase):
@@ -182,7 +243,7 @@ class GptQueryIntentHandler(AbstractRequestHandler):
             logger.error("Gateway-Fehler: %s", result["error"], exc_info=True)
             return response_builder.speak(SPEAK_ERROR).set_should_end_session(True).response
 
-        speech, follow_up, is_ssml = result["value"]
+        speech, follow_up, is_ssml, display_text = result["value"]
 
         logger.info(
             "Gateway-Antwort: %d Zeichen, ssml=%s, followUp=%s, ANFANG=%r, ENDE=%r",
@@ -194,8 +255,12 @@ class GptQueryIntentHandler(AbstractRequestHandler):
         # ask-sdk speak() wrappt in <speak> und trimmt vorhandenen Wrapper;
         # Klartext muss XML-escaped werden (SSML aus dem Gateway nicht)
         response_builder.speak(escape(speech) if not is_ssml else speech)
-        # Simple-Card mit Klartext -> Anzeige auf Echo Show / Alexa App
-        response_builder.set_card(SimpleCard(title=CARD_TITLE, content=strip_ssml(speech)))
+        # Anzeige: Klartext ohne SSML-Tags (Echo Show / Alexa App)
+        display = display_text or strip_ssml(speech)
+        response_builder.set_card(SimpleCard(title=CARD_TITLE, content=display))
+        # APL: kontrollierte Schriftgroesse + Scroll auf unterstuetzten Geraeten
+        if supports_apl(handler_input):
+            render_apl(handler_input, CARD_TITLE, display)
         if keep_open:
             return response_builder.ask(SPEAK_HELP).response
         return response_builder.set_should_end_session(True).response

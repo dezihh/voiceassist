@@ -98,6 +98,48 @@ function buildTools(
   return { specs, routes };
 }
 
+function escapeXml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function stripSsmlTags(text: string): string {
+  return text
+    .replace(/<speak>|<\/speak>/gi, '')
+    .replace(/<break[^>]*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function withSsmlBreaks(resp: AssistantResponse): AssistantResponse {
+  if (resp.ssml) return resp;
+  const s = resp.speech.trim();
+  let parts = s
+    .split(/\n\s*\n|\n(?=\s*(?:[-*•]|\d+[.)])\s)/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2 && s.length >= 160) {
+    const sentences = s.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ„"])/);
+    if (sentences.length >= 2) {
+      parts = [];
+      for (let i = 0; i < sentences.length; i += 2) {
+        parts.push(sentences.slice(i, i + 2).join(' ').trim());
+      }
+    }
+  }
+  if (parts.length < 2 || s.length < 150) return resp;
+  const speech = `<speak>${parts
+    .map((p) => escapeXml(p).replace(/\s*\n\s*/g, ' '))
+    .join('<break time="300ms"/>')}</speak>`;
+  return { ...resp, speech, ssml: true };
+}
+
+function withDisplay(resp: AssistantResponse): AssistantResponse {
+  const text = resp.display?.text ?? (resp.ssml ? stripSsmlTags(resp.speech) : resp.speech);
+  const title = getSetting('display_title') ?? 'MeinHelfer';
+  return { ...resp, display: { ...resp.display, title, text } };
+}
+
 function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantResponse {
   const filtered = content
     .replace(/<\|?tool_call>[\s\S]*?(?:<tool_call\|>|<\|end_of_turn\|>|$)/gi, '')
@@ -282,6 +324,9 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
       response = { speech: FallbackError };
     }
   }
+
+  response = withSsmlBreaks(response);
+  response = withDisplay(response);
 
   if (!response.followUp) {
     const mode = getSetting('session_followup') ?? '0';
