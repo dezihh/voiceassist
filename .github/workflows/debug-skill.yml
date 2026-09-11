@@ -67,6 +67,10 @@ jobs:
           git show alexa/dev:lambda/requirements.txt 2>&1 || echo "FEHLT"
           echo "=== lambda/ auf alexa/master:"
           git ls-tree --name-only "alexa/master:lambda" 2>&1
+          echo "=== config.json gateway_token-Hash (hosted dev, nur Hash):"
+          git show alexa/dev:lambda/config.json 2>/dev/null | python3 -c 'import json,hashlib,sys; c=json.load(sys.stdin); print("gateway_url:", c.get("gateway_url")); print("token-hash:", hashlib.sha256(c.get("gateway_token","").encode()).hexdigest()[:10])' || echo "FEHLT"
+          echo "=== watchdog (hosted dev):"
+          git show alexa/dev:lambda/config.json 2>/dev/null | python3 -c 'import json,sys; c=json.load(sys.stdin); print({k:v for k,v in c.items() if k!="gateway_token"})' || true
 
       - name: Deployed lambda_function.py kompilieren (dev + master)
         env:
