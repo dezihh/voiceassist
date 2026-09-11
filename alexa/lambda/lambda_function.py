@@ -140,10 +140,11 @@ def call_gateway(query, session_id, user_id):
     resp = payload.get("response") if isinstance(payload.get("response"), dict) else payload
     speech = resp.get("speech") or SPEAK_ERROR
     follow_up = bool(resp.get("followUp"))
+    followup_prompt = (resp.get("followupPrompt") or "").strip() or None
     ssml = bool(resp.get("ssml")) or speech.strip().startswith("<speak")
     display = resp.get("display") or {}
     display_text = (display.get("text") or "").strip() or None
-    return speech, follow_up, ssml, display_text
+    return speech, follow_up, ssml, display_text, followup_prompt
 
 
 def send_progressive(handler_input, request, phrase):
@@ -243,7 +244,7 @@ class GptQueryIntentHandler(AbstractRequestHandler):
             logger.error("Gateway-Fehler: %s", result["error"], exc_info=True)
             return response_builder.speak(SPEAK_ERROR).set_should_end_session(True).response
 
-        speech, follow_up, is_ssml, display_text = result["value"]
+        speech, follow_up, is_ssml, display_text, followup_prompt = result["value"]
 
         logger.info(
             "Gateway-Antwort: %d Zeichen, ssml=%s, followUp=%s, ANFANG=%r, ENDE=%r",
@@ -262,7 +263,8 @@ class GptQueryIntentHandler(AbstractRequestHandler):
         if supports_apl(handler_input):
             render_apl(handler_input, CARD_TITLE, display)
         if keep_open:
-            return response_builder.ask(SPEAK_HELP).response
+            # Dynamische Rueckfrage vom Gateway (situativ), sonst statischer Hinweis
+            return response_builder.ask(followup_prompt or SPEAK_HELP).response
         return response_builder.set_should_end_session(True).response
 
 
