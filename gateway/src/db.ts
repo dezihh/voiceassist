@@ -10,6 +10,33 @@ mkdirSync(dirname(dbPath), { recursive: true });
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
+// Migration: actions um handler_config + search_summary-Mode erweitern (idempotent)
+{
+  const cols = (db.prepare('PRAGMA table_info(actions)').all() as { name: string }[]).map((c) => c.name);
+  if (cols.length > 0 && !cols.includes('handler_config')) {
+    db.exec(`
+      CREATE TABLE actions_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        mode TEXT NOT NULL DEFAULT 'llm' CHECK (mode IN ('deterministic','llm','hybrid','search_summary')),
+        trigger_phrases TEXT,
+        fuzzy_threshold REAL,
+        system_prompt TEXT,
+        template TEXT,
+        tools TEXT,
+        handler_config TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO actions_new (id, name, mode, trigger_phrases, fuzzy_threshold, system_prompt, template, tools, enabled, created_at, updated_at)
+        SELECT id, name, mode, trigger_phrases, fuzzy_threshold, system_prompt, template, tools, enabled, created_at, updated_at FROM actions;
+      DROP TABLE actions;
+      ALTER TABLE actions_new RENAME TO actions;
+    `);
+  }
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS mcp_servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,12 +54,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    mode TEXT NOT NULL DEFAULT 'llm' CHECK (mode IN ('deterministic','llm','hybrid')),
+    mode TEXT NOT NULL DEFAULT 'llm' CHECK (mode IN ('deterministic','llm','hybrid','search_summary')),
     trigger_phrases TEXT,
     fuzzy_threshold REAL,
     system_prompt TEXT,
     template TEXT,
     tools TEXT,
+    handler_config TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -106,7 +134,31 @@ Fasse die Suchergebnisse zusammen: 2-3 konkrete Titel/Fakten mit Quelle, niemals
 );
 
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('warteton', 'phrase');
-db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuzzy_global', '1');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fastpath_model', 'claude-haiku-4.5');
+db.prepare(
+  'INSERT OR IGNORE INTO actions (name, mode, trigger_phrases, handler_config, enabled) VALUES (?, ?, ?, ?, 1)'
+).run(
+  'news_summary',
+  'search_summary',
+  JSON.stringify([
+    'nachrichten',
+    'neuigkeiten',
+    'nachrichtenzusammenfassung',
+    'news',
+    'schlagzeilen',
+    'was gibt es neues',
+    'zusammenfassung',
+  ]),
+  JSON.stringify({
+    search_query: 'aktuelle nachrichten zusammenfassung',
+    topic_template: '{topic} neuigkeiten',
+    time_range: 'week',
+    model: 'claude-haiku-4.5',
+    fallback_model: 'deepseek-v4-pro',
+    answer_prompt:
+      'Du bist Smart Pilot, ein deutscher Sprachassistent. Fasse die Suchergebnisse als NACHRICHTENZUSAMMENFASSUNG zusammen.\n\nExtrahiere aus den SNIPPET-INHALTEN 2-3 konkrete Schlagzeilen oder Fakten (Politik, Wirtschaft, Sport, Technik) und nenne sie kurz mit Quelle (z.B. "Laut tagesschau ..."). Die Snippets stammen teils von Nachrichtenseiten-Startseiten - deren Inhalt IST die Nachricht. Nur wenn die Snippets wirklich nichts Konkretes enthalten, sag das ehrlich in einem Satz.\n\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt: {"needs_clarification": false, "speech": "<Antwort>", "keep_open": true}.\nspeech: max. 4 Saetze, sprechbar, Zahlen wie "2,2 Euro". Mehrteilige Antworten: Teile mit \\n\\n trennen (wird als Sprechpause gesprochen).',
+  } satisfies import('./types.js').SearchSummaryConfig)
+);db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuzzy_global', '1');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', '0');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_keywords', 'zusammenfassung,neuigkeiten,liste,bericht,news,tipps,hintergründe');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('debug_logging', '0');
@@ -148,13 +200,19 @@ export function parseAction(row: ActionRow): ParsedAction {
   } catch {
     toolList = null;
   }
-  return { ...row, triggers, toolList };
+  let handlerConfig: ParsedAction['handlerConfig'] = null;
+  try {
+    handlerConfig = row.handler_config ? (JSON.parse(row.handler_config) as ParsedAction['handlerConfig']) : null;
+  } catch {
+    handlerConfig = null;
+  }
+  return { ...row, triggers, toolList, handlerConfig };
 }
 
 export function listActions(enabledOnly: boolean): ParsedAction[] {
   const rows = enabledOnly
-    ? (db.prepare('SELECT * FROM actions WHERE enabled = 1').all() as ActionRow[])
-    : (db.prepare('SELECT * FROM actions ORDER BY name').all() as ActionRow[]);
+    ? (db.prepare('SELECT * FROM actions WHERE enabled = 1 ORDER BY id').all() as ActionRow[])
+    : (db.prepare('SELECT * FROM actions ORDER BY id').all() as ActionRow[]);
   return rows.map(parseAction);
 }
 
@@ -166,8 +224,8 @@ export function getAction(id: number): ParsedAction | undefined {
 export function createAction(data: ActionInput): ParsedAction {
   const info = db
     .prepare(
-      `INSERT INTO actions (name, mode, trigger_phrases, fuzzy_threshold, system_prompt, template, tools, enabled)
-       VALUES (@name, @mode, @trigger_phrases, @fuzzy_threshold, @system_prompt, @template, @tools, @enabled)`
+      `INSERT INTO actions (name, mode, trigger_phrases, fuzzy_threshold, system_prompt, template, tools, handler_config, enabled)
+       VALUES (@name, @mode, @trigger_phrases, @fuzzy_threshold, @system_prompt, @template, @tools, @handler_config, @enabled)`
     )
     .run(data);
   const row = getAction(Number(info.lastInsertRowid));
@@ -179,7 +237,7 @@ export function updateAction(id: number, data: ActionInput): ParsedAction | unde
   db.prepare(
     `UPDATE actions SET name = @name, mode = @mode, trigger_phrases = @trigger_phrases,
      fuzzy_threshold = @fuzzy_threshold, system_prompt = @system_prompt, template = @template,
-     tools = @tools, enabled = @enabled, updated_at = datetime('now')
+     tools = @tools, handler_config = @handler_config, enabled = @enabled, updated_at = datetime('now')
      WHERE id = @id`
   ).run({ ...data, id });
   return getAction(id);
@@ -325,5 +383,6 @@ export interface ActionInput {
   system_prompt: string | null;
   template: string | null;
   tools: string | null;
+  handler_config: string | null;
   enabled: number;
 }

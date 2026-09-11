@@ -42,7 +42,7 @@ app.use(
 
 function normalizeActionInput(body: Record<string, unknown>): ActionInput {
   const mode = String(body.mode ?? '');
-  if (mode !== 'deterministic' && mode !== 'llm' && mode !== 'hybrid') {
+  if (mode !== 'deterministic' && mode !== 'llm' && mode !== 'hybrid' && mode !== 'search_summary') {
     throw new Error(`Ungültiger Modus: ${mode}`);
   }
   const triggers = Array.isArray(body.trigger_phrases) ? body.trigger_phrases.map(String) : [];
@@ -55,6 +55,12 @@ function normalizeActionInput(body: Record<string, unknown>): ActionInput {
     system_prompt: body.system_prompt == null ? null : String(body.system_prompt),
     template: body.template == null ? null : String(body.template),
     tools: tools && tools.length > 0 ? JSON.stringify(tools) : null,
+    handler_config:
+      body.handler_config == null
+        ? null
+        : typeof body.handler_config === 'string'
+          ? String(body.handler_config) || null
+          : JSON.stringify(body.handler_config),
     enabled: body.enabled === false ? 0 : 1,
   };
 }

@@ -277,47 +277,67 @@ async function runAgent(query: VoiceQuery, mcp: McpContext, trace: TraceEvent[])
   return response;
 }
 
-const NEWS_RE = /(nachricht|neuigkeiten|news|schlagzeilen|zusammenfassung|börsenreport|börsenberichte|börsenlage|was gibt es neues|was ist los)/i;
-const INVOCATION_RE = /^\s*(?:frag(?:e)?|sag(?: mir)?|bitt?e?|gib mir)?\s*(?:voice\s+assist|smart\s+pilot|mein(?:e[rn]?)?\s+helfer|assistent(?:in)?)?\s*(?:nach|über|ueber|zu(?:m|r)?|von)?\s*(?:den|die|das|eine[rs]?|aktuellen?|aktueller|aktuelle)\s*/i;
+const DEFAULT_TOPIC_STOPWORDS = [
+  'frage', 'frag', 'sag', 'mir', 'bitte', 'gib', 'voice', 'assist', 'smart', 'pilot',
+  'mein', 'meine', 'meiner', 'meinen', 'helfer', 'assistent', 'assistentin',
+  'nach', 'über', 'ueber', 'von', 'vom', 'zum', 'zur', 'zu',
+  'den', 'die', 'das', 'der', 'eine', 'einen', 'einer', 'einem',
+  'aktuellen', 'aktueller', 'aktuelle', 'aktuell', 'mal', 'bitte',
+];
 
-function stripInvocation(text: string): string {
-  return text.replace(INVOCATION_RE, '').trim() || text.trim();
+function extractTopic(queryText: string, triggers: string[], stopwords: string[]): string {
+  let text = queryText.toLowerCase();
+  for (const t of [...triggers].sort((a, b) => b.length - a.length)) {
+    const i = text.indexOf(t.toLowerCase());
+    if (i >= 0) {
+      text = `${text.slice(0, i)} ${text.slice(i + t.length)}`.trim();
+      break;
+    }
+  }
+  const stop = new Set(stopwords.map((s) => s.toLowerCase()));
+  return text
+    .split(/\s+/)
+    .filter((w) => w && !stop.has(w))
+    .join(' ')
+    .trim();
 }
 
-async function runNewsFastPath(
+async function executeSearchSummary(
+  action: ParsedAction,
   query: VoiceQuery,
   mcp: McpContext,
   trace: TraceEvent[]
-): Promise<AssistantResponse | null> {
-  if (!NEWS_RE.test(query.text)) return null;
+): Promise<AssistantResponse> {
+  const cfg = action.handlerConfig;
+  if (!cfg) return { speech: 'Die Route ist nicht konfiguriert.' };
   const searchTool = facadeTools.find((t) => t.name === 'search_web');
-  if (!searchTool) return null;
-  const searchText0 = stripInvocation(query.text)
-    .replace(/^zusammenfassung\s+(?:von|über|ueber)\s+/i, '')
-    .trim() || stripInvocation(query.text);
-  const searchText = /^(?:aktuelle[rn]?[\s-]*)?(?:nachrichten?|neuigkeiten|news)[\s-]*(?:zusammenfassung)?$|^news$/i.test(searchText0)
-    ? 'aktuelle nachrichten zusammenfassung'
-    : /nachricht|neuigkeiten|news|schlagzeilen|zusammenfassung|aktuell/i.test(searchText0) && searchText0.length < 14
-      ? `${searchText0} news`
-      : searchText0;
-  const timeRange = /nachricht|neuigkeiten|news|schlagzeilen|aktuell/i.test(searchText) ? 'week' : undefined;
-  trace.push({ ts: Date.now(), step: 'fastpath.search', detail: { query: searchText, timeRange } });
-  let snippets = '';
-  try {
-    const out = (await searchTool.run(
-      timeRange
-        ? { query: searchText, time_range: timeRange, engines: 'google_news,bing_news' }
-        : { query: searchText, engines: 'google_news,bing_news' },
-      mcp
-    )) as Record<string, unknown>;
-    snippets = String(out?.snippets ?? '');
-  } catch (e) {
-    trace.push({ ts: Date.now(), step: 'fastpath.search_error', detail: String(e) });
-    return null;
-  }
-  if (!snippets.trim()) return null;
+  if (!searchTool) return { speech: 'Die Suche ist nicht verfügbar.' };
 
-  const system = getPrompt('fastpath_system') ?? 'Du bist ein hilfreicher deutscher Sprachassistent. Die Websuche ist bereits erfolgt.';
+  const topic = extractTopic(query.text, action.triggers, cfg.stopwords ?? DEFAULT_TOPIC_STOPWORDS);
+  const searchQuery =
+    topic && cfg.topic_template
+      ? cfg.topic_template.replace('{topic}', topic)
+      : topic || cfg.search_query;
+  const searchArgs: Record<string, unknown> = { query: searchQuery };
+  // News-Engines (google_news etc.) unterstuetzen kein time_range in searxng
+  if (cfg.time_range && !cfg.engines) searchArgs.time_range = cfg.time_range;
+  if (cfg.engines) searchArgs.engines = cfg.engines;
+  trace.push({ ts: Date.now(), step: 'action.search', detail: { query: searchQuery, topic } });
+
+  let snippets: string;
+  try {
+    const out = (await searchTool.run(searchArgs, mcp)) as Record<string, unknown>;
+    snippets = String(out?.snippets ?? '').trim();
+  } catch (e) {
+    trace.push({ ts: Date.now(), step: 'action.search_error', detail: String(e).slice(0, 120) });
+    return { speech: 'Die Suche hat gerade leider nichts ergeben.' };
+  }
+  if (!snippets) return { speech: 'Dazu habe ich gerade keine aktuellen Informationen gefunden.' };
+
+  const system =
+    cfg.answer_prompt ??
+    getPrompt('fastpath_system') ??
+    'Du bist ein hilfreicher deutscher Sprachassistent. Die Websuche ist bereits erfolgt.';
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
     {
@@ -325,18 +345,15 @@ async function runNewsFastPath(
       content: `Die Websuche wurde bereits durchgefuehrt. Suchergebnisse:\n${snippets}\n\nUrspruengliche Frage: ${query.text}\nErstelle daraus die FINALE Antwort im vorgegebenen JSON-Format. Tool-Aufrufe sind nicht mehr moeglich.`,
     },
   ];
-  trace.push({ ts: Date.now(), step: 'fastpath.answer' });
-  const FASTPATH_MODEL = getSetting('fastpath_model') ?? 'claude-haiku-4.5';
+  trace.push({ ts: Date.now(), step: 'action.answer', detail: { model: cfg.model } });
   let message: ChatMessage;
   try {
-    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, FASTPATH_MODEL);
+    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.model);
   } catch (e) {
-    trace.push({ ts: Date.now(), step: 'fastpath.model_fallback', detail: String(e).slice(0, 120) });
-    message = await chatCompletion(messages, undefined, config.toolDeadlineMs);
+    trace.push({ ts: Date.now(), step: 'action.model_fallback', detail: String(e).slice(0, 120) });
+    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.fallback_model);
   }
-  const response = parseAgentAnswer(message.content ?? '', trace);
-  rememberTurn(query.sessionId, query.text, response.speech);
-  return response;
+  return parseAgentAnswer(message.content ?? '', trace);
 }
 
 async function executeAction(
@@ -345,6 +362,9 @@ async function executeAction(
   mcp: McpContext,
   trace: TraceEvent[]
 ): Promise<AssistantResponse> {
+  if (action.mode === 'search_summary') {
+    return executeSearchSummary(action, query, mcp, trace);
+  }
   if (action.mode === 'llm' || (action.mode === 'hybrid' && !action.template)) {
     const system = action.system_prompt ?? getPrompt('agent_system') ?? '';
     return runToolLoop(system, query.text, action.toolList, mcp, trace);
@@ -395,7 +415,7 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     route = 'agent';
     trace.push({ ts: Date.now(), step: 'route.agent' });
     try {
-      response = (await runNewsFastPath(query, mcp, trace)) ?? (await runAgent(query, mcp, trace));
+      response = await runAgent(query, mcp, trace);
     } catch (e) {
       trace.push({ ts: Date.now(), step: 'agent.error', detail: String(e) });
       response = { speech: FallbackError };
