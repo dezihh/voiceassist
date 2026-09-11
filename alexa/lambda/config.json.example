@@ -1,0 +1,6 @@
+{
+  "gateway_url": "https://vsys.ziegler-eu.de",
+  "gateway_token": "<AUTH_TOKEN aus gateway/.env>",
+  "watchdog_delay": "20",
+  "gateway_timeout": "28"
+}

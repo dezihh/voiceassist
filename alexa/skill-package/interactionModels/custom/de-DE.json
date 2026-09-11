@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "voice assist",
+      "invocationName": "mein helfer",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
