@@ -185,6 +185,8 @@ async function runToolLoop(
   ];
   const overallDeadline = Date.now() + config.toolDeadlineMs * 2;
   const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';
+  const toolBudgets: Record<string, number> = { web_url_read: 1, search_web: 1 };
+  const toolCalls: Record<string, number> = {};
   const runTools = async (message: ChatMessage): Promise<void> => {
     messages.push({
       role: 'assistant',
@@ -197,6 +199,19 @@ async function runToolLoop(
       try {
         const route = routes.get(call.function.name);
         if (!route) throw new Error(`unbekanntes Tool: ${call.function.name}`);
+        const used = toolCalls[call.function.name] ?? 0;
+        const budget = toolBudgets[call.function.name];
+        if (budget !== undefined && used >= budget) {
+          result = `Limit erreicht (${call.function.name}: max. ${budget} pro Frage). Antworte JETZT mit den vorhandenen Informationen.`;
+          trace.push({
+            ts: Date.now(),
+            step: 'tool.budget_hit',
+            detail: { tool: call.function.name, used },
+          });
+          messages.push({ role: 'tool', content: result, tool_call_id: call.id });
+          continue;
+        }
+        toolCalls[call.function.name] = used + 1;
         const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>;
         if (typeof args.num_results === 'number' && args.num_results > 3) {
           args.num_results = 3;
@@ -262,6 +277,68 @@ async function runAgent(query: VoiceQuery, mcp: McpContext, trace: TraceEvent[])
   return response;
 }
 
+const NEWS_RE = /(nachricht|neuigkeiten|news|schlagzeilen|zusammenfassung|börsenreport|börsenberichte|börsenlage|was gibt es neues|was ist los)/i;
+const INVOCATION_RE = /^\s*(?:frag(?:e)?|sag(?: mir)?|bitt?e?|gib mir)?\s*(?:voice\s+assist|smart\s+pilot|mein(?:e[rn]?)?\s+helfer|assistent(?:in)?)?\s*(?:nach|über|ueber|zu(?:m|r)?|von)?\s*(?:den|die|das|eine[rs]?|aktuellen?|aktueller|aktuelle)\s*/i;
+
+function stripInvocation(text: string): string {
+  return text.replace(INVOCATION_RE, '').trim() || text.trim();
+}
+
+async function runNewsFastPath(
+  query: VoiceQuery,
+  mcp: McpContext,
+  trace: TraceEvent[]
+): Promise<AssistantResponse | null> {
+  if (!NEWS_RE.test(query.text)) return null;
+  const searchTool = facadeTools.find((t) => t.name === 'search_web');
+  if (!searchTool) return null;
+  const searchText0 = stripInvocation(query.text)
+    .replace(/^zusammenfassung\s+(?:von|über|ueber)\s+/i, '')
+    .trim() || stripInvocation(query.text);
+  const searchText = /^(?:aktuelle[rn]?[\s-]*)?(?:nachrichten?|neuigkeiten|news)[\s-]*(?:zusammenfassung)?$|^news$/i.test(searchText0)
+    ? 'aktuelle nachrichten zusammenfassung'
+    : /nachricht|neuigkeiten|news|schlagzeilen|zusammenfassung|aktuell/i.test(searchText0) && searchText0.length < 14
+      ? `${searchText0} news`
+      : searchText0;
+  const timeRange = /nachricht|neuigkeiten|news|schlagzeilen|aktuell/i.test(searchText) ? 'week' : undefined;
+  trace.push({ ts: Date.now(), step: 'fastpath.search', detail: { query: searchText, timeRange } });
+  let snippets = '';
+  try {
+    const out = (await searchTool.run(
+      timeRange
+        ? { query: searchText, time_range: timeRange, engines: 'google_news,bing_news' }
+        : { query: searchText, engines: 'google_news,bing_news' },
+      mcp
+    )) as Record<string, unknown>;
+    snippets = String(out?.snippets ?? '');
+  } catch (e) {
+    trace.push({ ts: Date.now(), step: 'fastpath.search_error', detail: String(e) });
+    return null;
+  }
+  if (!snippets.trim()) return null;
+
+  const system = getPrompt('fastpath_system') ?? 'Du bist ein hilfreicher deutscher Sprachassistent. Die Websuche ist bereits erfolgt.';
+  const messages: ChatMessage[] = [
+    { role: 'system', content: system },
+    {
+      role: 'user',
+      content: `Die Websuche wurde bereits durchgefuehrt. Suchergebnisse:\n${snippets}\n\nUrspruengliche Frage: ${query.text}\nErstelle daraus die FINALE Antwort im vorgegebenen JSON-Format. Tool-Aufrufe sind nicht mehr moeglich.`,
+    },
+  ];
+  trace.push({ ts: Date.now(), step: 'fastpath.answer' });
+  const FASTPATH_MODEL = getSetting('fastpath_model') ?? 'claude-haiku-4.5';
+  let message: ChatMessage;
+  try {
+    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, FASTPATH_MODEL);
+  } catch (e) {
+    trace.push({ ts: Date.now(), step: 'fastpath.model_fallback', detail: String(e).slice(0, 120) });
+    message = await chatCompletion(messages, undefined, config.toolDeadlineMs);
+  }
+  const response = parseAgentAnswer(message.content ?? '', trace);
+  rememberTurn(query.sessionId, query.text, response.speech);
+  return response;
+}
+
 async function executeAction(
   action: ParsedAction,
   query: VoiceQuery,
@@ -318,7 +395,7 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     route = 'agent';
     trace.push({ ts: Date.now(), step: 'route.agent' });
     try {
-      response = await runAgent(query, mcp, trace);
+      response = (await runNewsFastPath(query, mcp, trace)) ?? (await runAgent(query, mcp, trace));
     } catch (e) {
       trace.push({ ts: Date.now(), step: 'agent.error', detail: String(e) });
       response = { speech: FallbackError };

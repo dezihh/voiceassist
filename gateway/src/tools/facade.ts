@@ -137,7 +137,7 @@ export const facadeTools: FacadeTool[] = [
   {
     name: 'search_web',
     description:
-      'Websuche ueber SearXNG fuer aktuelle Informationen (Nachrichten, Kurse, Wetter). Liefert Snippets plus den extrahierten Text des ersten Treffers. Hoechstens ein Aufruf pro Frage.',
+      'Websuche ueber SearXNG fuer aktuelle Informationen (Nachrichten, Kurse, Wetter). Liefert Snippets der besten Treffer - daraus sofort antworten. Hoechstens ein Aufruf pro Frage.',
     parameters: {
       type: 'object',
       properties: {
@@ -151,33 +151,20 @@ export const facadeTools: FacadeTool[] = [
       if (!query) return { error: 'query erforderlich.' };
       const searchArgs: Record<string, unknown> = { query, language: 'de', num_results: 5 };
       if (typeof args.time_range === 'string' && args.time_range) searchArgs.time_range = args.time_range;
+      if (typeof args.engines === 'string' && args.engines) searchArgs.engines = args.engines;
       const raw = await callMcpToolText(mcp, 'searxng_web_search', searchArgs);
       let snippets: string[] = [];
-      let firstUrl = '';
       try {
-        const parsed = JSON.parse(raw) as { results?: { url?: string; title?: string; content?: string }[] };
+        const parsed = JSON.parse(raw) as { results?: { title?: string; content?: string }[] };
         for (const item of parsed.results ?? []) {
           const title = (item?.title ?? '').trim();
           const content = (item?.content ?? '').trim();
           if (title || content) snippets.push(`${title}: ${content}`);
-          if (!firstUrl && typeof item?.url === 'string' && item.url.startsWith('http')) firstUrl = item.url;
         }
       } catch {
         snippets = [raw.slice(0, 1200)];
       }
-      let fetched = '';
-      if (firstUrl) {
-        try {
-          fetched = await callMcpToolText(mcp, 'web_url_read', { url: firstUrl });
-        } catch {
-          fetched = '';
-        }
-      }
-      return {
-        snippets: snippets.slice(0, 5).join('\n').slice(0, 1200),
-        ...(firstUrl ? { erster_treffer: firstUrl } : {}),
-        ...(fetched ? { seiteninhalt: fetched.slice(0, 1600) } : {}),
-      };
+      return { snippets: snippets.slice(0, 5).map((s) => s.slice(0, 200)).join('\n').slice(0, 1100) };
     },
   },
   {

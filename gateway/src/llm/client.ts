@@ -20,10 +20,11 @@ export interface ToolSpec {
 export async function chatCompletion(
   messages: ChatMessage[],
   tools?: ToolSpec[],
-  timeoutMs?: number
+  timeoutMs?: number,
+  modelOverride?: string
 ): Promise<ChatMessage> {
   const body: Record<string, unknown> = {
-    model: config.llm.model,
+    model: modelOverride ?? config.llm.model,
     messages,
     max_tokens: config.llm.maxTokens,
     temperature: 0.2,
