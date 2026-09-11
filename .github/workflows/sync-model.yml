@@ -6,6 +6,9 @@ on:
       force:
         description: "1 = PUT erzwingen (Diff-Check ignorieren)"
         default: "0"
+      skill_id:
+        description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
+        default: ""
 
 jobs:
   sync:
@@ -25,7 +28,7 @@ jobs:
 
       - name: Model-Stand pruefen, synchronisieren, bauen
         env:
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
         run: |
           source ~/.ask/auth_info
           REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
