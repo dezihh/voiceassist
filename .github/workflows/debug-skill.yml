@@ -2,6 +2,10 @@ name: Debug Skill Status (SMAPI)
 
 on:
   workflow_dispatch:
+    inputs:
+      skill_id:
+        description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
+        default: ""
 
 jobs:
   debug:
@@ -21,7 +25,7 @@ jobs:
 
       - name: Skill-Diagnose
         env:
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
         run: |
           source ~/.ask/auth_info
           REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
@@ -38,7 +42,7 @@ jobs:
 
       - name: Alexa-Repo-Baum pruefen (requirements.txt + lambda/)
         env:
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
         run: |
           mkdir -p ~/.ask/scripts
           echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
@@ -66,7 +70,7 @@ jobs:
 
       - name: Deployed lambda_function.py kompilieren (dev + master)
         env:
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID }}
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
         run: |
           source ~/.ask/auth_info
           REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
