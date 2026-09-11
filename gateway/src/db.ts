@@ -153,6 +153,9 @@ db.prepare(
     search_query: 'aktuelle nachrichten zusammenfassung',
     topic_template: '{topic} neuigkeiten',
     time_range: 'week',
+    max_results: 6,
+    snippet_chars: 350,
+    fetch: { url: 'https://www.tagesschau.de/api2u/homepage/', pick: 'news', fields: ['title', 'firstSentence'], max: 6 },
     model: 'claude-haiku-4.5',
     fallback_model: 'deepseek-v4-pro',
     answer_prompt:

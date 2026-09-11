@@ -318,19 +318,63 @@ async function executeSearchSummary(
     topic && cfg.topic_template
       ? cfg.topic_template.replace('{topic}', topic)
       : topic || cfg.search_query;
-  const searchArgs: Record<string, unknown> = { query: searchQuery };
-  // News-Engines (google_news etc.) unterstuetzen kein time_range in searxng
-  if (cfg.time_range && !cfg.engines) searchArgs.time_range = cfg.time_range;
-  if (cfg.engines) searchArgs.engines = cfg.engines;
   trace.push({ ts: Date.now(), step: 'action.search', detail: { query: searchQuery, topic } });
 
   let snippets: string;
-  try {
-    const out = (await searchTool.run(searchArgs, mcp)) as Record<string, unknown>;
-    snippets = String(out?.snippets ?? '').trim();
-  } catch (e) {
-    trace.push({ ts: Date.now(), step: 'action.search_error', detail: String(e).slice(0, 120) });
-    return { speech: 'Die Suche hat gerade leider nichts ergeben.' };
+  if (cfg.fetch?.url) {
+    try {
+      const res = await fetch(cfg.fetch.url, { signal: AbortSignal.timeout(8000) });
+      const data = (await res.json()) as Record<string, unknown>;
+      const pick = cfg.fetch.pick ?? 'news';
+      const list = Array.isArray(data[pick]) ? (data[pick] as Record<string, unknown>[]) : [];
+      const fields = cfg.fetch.fields ?? ['title', 'firstSentence'];
+      const lines = list
+        .slice(0, cfg.fetch.max ?? 6)
+        .map((item) => fields.map((f) => String(item[f] ?? '').trim()).filter(Boolean).join(': '))
+        .filter(Boolean);
+      snippets = lines.length ? `Quelle: tagesschau.de (aktuelle Meldungen)\n${lines.join('\n')}` : '';
+      if (!snippets) trace.push({ ts: Date.now(), step: 'action.fetch_empty', detail: { count: list.length } });
+    } catch (e) {
+      trace.push({ ts: Date.now(), step: 'action.fetch_error', detail: String(e).slice(0, 100) });
+      snippets = '';
+    }
+  } else if (cfg.urls && cfg.urls.length > 0) {
+    const readTool = facadeTools.find((t) => t.name === 'web_url_read');
+    if (!readTool) return { speech: 'Die Suche ist nicht verfügbar.' };
+    const parts: string[] = [];
+    for (const url of cfg.urls.slice(0, 2)) {
+      try {
+        const out = (await readTool.run({ url }, mcp)) as Record<string, unknown>;
+        const text = String(out?.inhalt ?? '').trim();
+        if (text) parts.push(`Quelle: ${url}\n${text.slice(0, cfg.url_chars ?? 1200)}`);
+      } catch (e) {
+        trace.push({ ts: Date.now(), step: 'action.url_error', detail: `${url}: ${String(e).slice(0, 80)}` });
+      }
+    }
+    snippets = parts.join('\n\n').trim();
+    if (!snippets) {
+      const searchTool = facadeTools.find((t) => t.name === 'search_web');
+      const out = searchTool
+        ? ((await searchTool.run({ query: searchQuery }, mcp)) as Record<string, unknown>)
+        : {};
+      snippets = String(out?.snippets ?? '').trim();
+    }
+  } else {
+    const searchTool = facadeTools.find((t) => t.name === 'search_web');
+    if (!searchTool) return { speech: 'Die Suche ist nicht verfügbar.' };
+    const searchArgs: Record<string, unknown> = { query: searchQuery };
+    // News-Engines (google_news etc.) unterstuetzen kein time_range in searxng
+    if (cfg.time_range && !cfg.engines) searchArgs.time_range = cfg.time_range;
+    if (cfg.engines) searchArgs.engines = cfg.engines;
+    if (cfg.max_results) searchArgs.max_results = cfg.max_results;
+    if (cfg.snippet_chars) searchArgs.snippet_chars = cfg.snippet_chars;
+    try {
+      const out = (await searchTool.run(searchArgs, mcp)) as Record<string, unknown>;
+      snippets = String(out?.snippets ?? '').trim();
+    } catch (e) {
+      trace.push({ ts: Date.now(), step: 'action.search_error', detail: String(e).slice(0, 120) });
+      return { speech: 'Die Suche hat gerade leider nichts ergeben.' };
+    }
   }
   if (!snippets) return { speech: 'Dazu habe ich gerade keine aktuellen Informationen gefunden.' };
 

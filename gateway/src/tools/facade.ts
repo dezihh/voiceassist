@@ -152,6 +152,8 @@ export const facadeTools: FacadeTool[] = [
       const searchArgs: Record<string, unknown> = { query, language: 'de', num_results: 5 };
       if (typeof args.time_range === 'string' && args.time_range) searchArgs.time_range = args.time_range;
       if (typeof args.engines === 'string' && args.engines) searchArgs.engines = args.engines;
+      const maxResults = typeof args.max_results === 'number' && args.max_results > 0 ? Math.min(args.max_results, 10) : 5;
+      const snippetChars = typeof args.snippet_chars === 'number' && args.snippet_chars > 0 ? Math.min(args.snippet_chars, 600) : 200;
       const raw = await callMcpToolText(mcp, 'searxng_web_search', searchArgs);
       let snippets: string[] = [];
       try {
@@ -164,7 +166,13 @@ export const facadeTools: FacadeTool[] = [
       } catch {
         snippets = [raw.slice(0, 1200)];
       }
-      return { snippets: snippets.slice(0, 5).map((s) => s.slice(0, 200)).join('\n').slice(0, 1100) };
+      return {
+        snippets: snippets
+          .slice(0, maxResults)
+          .map((s) => s.slice(0, snippetChars))
+          .join('\n')
+          .slice(0, maxResults * snippetChars + 100),
+      };
     },
   },
   {
