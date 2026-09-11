@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import random
+import re
 import threading
 import time
 
@@ -11,6 +12,7 @@ from ask_sdk_core.skill_builder import CustomSkillBuilder
 from ask_sdk_core.api_client import DefaultApiClient
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_model.services.directive import SendDirectiveRequest, Header, SpeakDirective
+from ask_sdk_model.ui import SimpleCard
 from xml.sax.saxutils import escape
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,17 @@ SPEAK_HELP = "Sie können mir zum Beispiel nach dem Hausstatus oder aktuellen In
 SPEAK_STOP = random.choice(["Bis zum nächsten Mal.", "Alles klar, bis später.", "Okay, tschüss."])
 SPEAK_ERROR = "Entschuldigung, da ist etwas schiefgelaufen."
 SPEAK_PROCESSING = "Einen Moment bitte."
+
+
+def strip_ssml(text):
+    text = re.sub(r"<speak>|</speak>", "", text, flags=re.I)
+    text = re.sub(r"<break[^>]*/?>", " ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+CARD_TITLE = "MeinHelfer"
 
 
 def call_gateway(query, session_id, user_id):
@@ -113,7 +126,13 @@ class LaunchRequestHandler(AbstractRequestHandler):
         return ask_utils.is_request_type("LaunchRequest")(handler_input)
 
     def handle(self, handler_input):
-        return handler_input.response_builder.speak(SPEAK_WELCOME).ask(SPEAK_WELCOME).response
+        return (
+            handler_input.response_builder
+            .speak(SPEAK_WELCOME)
+            .set_card(SimpleCard(title=CARD_TITLE, content=SPEAK_WELCOME))
+            .ask(SPEAK_WELCOME)
+            .response
+        )
 
 
 class GptQueryIntentHandler(AbstractRequestHandler):
@@ -175,6 +194,8 @@ class GptQueryIntentHandler(AbstractRequestHandler):
         # ask-sdk speak() wrappt in <speak> und trimmt vorhandenen Wrapper;
         # Klartext muss XML-escaped werden (SSML aus dem Gateway nicht)
         response_builder.speak(escape(speech) if not is_ssml else speech)
+        # Simple-Card mit Klartext -> Anzeige auf Echo Show / Alexa App
+        response_builder.set_card(SimpleCard(title=CARD_TITLE, content=strip_ssml(speech)))
         if keep_open:
             return response_builder.ask(SPEAK_HELP).response
         return response_builder.set_should_end_session(True).response
@@ -185,7 +206,13 @@ class HelpIntentHandler(AbstractRequestHandler):
         return ask_utils.is_intent_name("AMAZON.HelpIntent")(handler_input)
 
     def handle(self, handler_input):
-        return handler_input.response_builder.speak(SPEAK_HELP).ask(SPEAK_HELP).response
+        return (
+            handler_input.response_builder
+            .speak(SPEAK_HELP)
+            .set_card(SimpleCard(title=CARD_TITLE, content=SPEAK_HELP))
+            .ask(SPEAK_HELP)
+            .response
+        )
 
 
 class CancelOrStopIntentHandler(AbstractRequestHandler):
