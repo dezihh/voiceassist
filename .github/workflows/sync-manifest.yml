@@ -46,7 +46,7 @@ jobs:
           names = [i.get("type") for i in interfaces]
           print("Interfaces:", names)
           if sys.argv[1] == "1" and "ALEXA_PRESENTATION_APL" not in names:
-              interfaces.append({"type": "ALEXA_PRESENTATION_APL", "runtimeVersion": "1.3"})
+              interfaces.append({"type": "ALEXA_PRESENTATION_APL"})
               json.dump(m, open("/tmp/m_new.json", "w"), ensure_ascii=False)
               print("APL ergaenzt")
           else:
