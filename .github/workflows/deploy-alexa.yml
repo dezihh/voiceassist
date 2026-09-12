@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Ziel-Branch im Alexa-Repo (dev = Test, master = Live)"
-        default: "dev"
+        description: "Ziel-Branch im Alexa-Repo (leer/auto = vorhandener Branch, meist master)"
+        default: ""
       skill_id:
         description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
         default: ""
@@ -72,10 +72,10 @@ jobs:
           echo "gerendert: invocation=$(python3 -c 'import json;print(json.load(open("alexa/skill-package/interactionModels/custom/de-DE.json"))["interactionModel"]["languageModel"]["invocationName"])')"
           echo "config.json wird NIE committed, nur in den Alexa-Branch gepusht (gitignored)"
 
-      - name: Nach Alexa pushen (CodeCommit, Branch ${{ inputs.branch }})
+      - name: Nach Alexa pushen (CodeCommit, Branch ${{ inputs.branch || 'auto' }})
         env:
           SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
-          BRANCH: ${{ inputs.branch }}
+          BRANCH_IN: ${{ inputs.branch }}
         run: |
           source ~/.ask/auth_info
           REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
@@ -87,19 +87,30 @@ jobs:
           git config "credential.https://${HOST_PATH}".UseHttpPath true
           git remote get-url alexa 2>/dev/null || git remote add alexa "${REPO_URL}"
           git fetch alexa '+refs/heads/*:refs/remotes/alexa/*' || true
+          echo "=== Vorhandene Alexa-Repo-Branches:"
+          git branch -r | grep 'alexa/' | sed 's/^[ *]*//' || echo "(keine)"
+          # Ziel-Branch: explizit oder erster vorhandener Branch
+          if [ -n "${BRANCH_IN}" ]; then
+            BRANCH="${BRANCH_IN}"
+          else
+            BRANCH=$(git branch -r | grep 'alexa/' | sed 's#^[ *]*alexa/##' | grep -v 'HEAD' | head -1)
+          fi
+          [ -n "${BRANCH}" ] || { echo "FEHLER: kein Alexa-Branch gefunden"; exit 1; }
+          echo "Ziel-Branch: ${BRANCH}"
           # Arbeitsbaum mit den Alexa-Dateien befuellen (hosted-Repo-Struktur)
-          git checkout HEAD -- alexa/lambda alexa/skill-package 2>/dev/null || true
           rm -rf /tmp/adeploy && mkdir -p /tmp/adeploy
           cp -r alexa/lambda /tmp/adeploy/lambda
           cp -r alexa/skill-package /tmp/adeploy/skill-package
           git worktree add /tmp/adeploy/repo HEAD
           cd /tmp/adeploy/repo
-          git fetch alexa "+refs/heads/${BRANCH}:refs/remotes/alexa/${BRANCH}" || true
           git checkout -B "${BRANCH}" "alexa/${BRANCH}" 2>/dev/null || git checkout -B "${BRANCH}"
+          # Alle Dateien auf den Branch-Stand zuruecksetzen, dann nur die Alexa-Ordner ersetzen
+          git checkout -q -- . 2>/dev/null || true
           rm -rf lambda skill-package
           cp -r /tmp/adeploy/lambda /tmp/adeploy/repo/lambda
           cp -r /tmp/adeploy/skill-package /tmp/adeploy/repo/skill-package
-          git add -A
+          git add -A lambda skill-package
+          git status --short | head -5
           git -c user.email="ci@meinhelfer" -c user.name="MeinHelfer CI" commit -m "deploy: ${{ inputs.note || 'Lauffaehige Files' }}" || echo "keine Dateiaenderung"
           git push alexa "HEAD:${BRANCH}" 2>&1 | tail -4
 

@@ -4,5 +4,5 @@
   "watchdog_delay": "5",
   "gateway_timeout": "28",
   "skill_name": "MeinHelfer",
-  "assistant_name": "Smart Pilot"
+  "assistant_name": "Dein Helfer"
 }
