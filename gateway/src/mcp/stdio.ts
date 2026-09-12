@@ -113,7 +113,7 @@ export class McpStdioClient implements McpTransport {
     await this.rpc('initialize', {
       protocolVersion: '2025-03-26',
       capabilities: {},
-      clientInfo: { name: 'voiceassist', version: '0.1.0' },
+      clientInfo: { name: 'meinhelfer', version: '0.1.0' },
     });
     await this.rpc('notifications/initialized', {}, true);
   }

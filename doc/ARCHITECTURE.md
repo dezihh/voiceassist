@@ -1,6 +1,6 @@
 # Architektur
 
-> Zentrale Architekturregeln von voiceassist. Festgehalten nach Review 2026-09-06
+> Zentrale Architekturregeln von meinhelfer. Festgehalten nach Review 2026-09-06
 > (Improvement-Issues #3–#6, POC-Entscheidungen in [DESIGN_WEBUI.md](DESIGN_WEBUI.md)).
 
 ## Zentrale Architekturregel: Adapter-Muster
@@ -9,7 +9,7 @@ Der Core kennt **kein Alexa**. Alexa-spezifisches (Requests, JSON-Strukturen,
 Response Cards, APL) liegt ausschließlich im Adapter:
 
 ```text
-Alexa Adapter ──▶ VoiceQuery ──▶ VoiceAssist Core ──▶ AssistantResponse ──▶ Alexa Adapter
+Alexa Adapter ──▶ VoiceQuery ──▶ MeinHelfer Core ──▶ AssistantResponse ──▶ Alexa Adapter
 ```
 
 ```typescript
@@ -87,11 +87,11 @@ Routing-Details und Latenzbudgets: [DESIGN_WEBUI.md](DESIGN_WEBUI.md), [DESIGN_S
 Home Assistant
 └── Welche Entities darf MCP sehen?          (HA-eigene Steuerung)
 
-VoiceAssist
+MeinHelfer
 └── Welche MCP-Tools darf das LLM verwenden? (später pro Action, Issues #3/#4)
 ```
 
-VoiceAssist baut **keine zweite Entity-Berechtigungsschicht** nach.
+MeinHelfer baut **keine zweite Entity-Berechtigungsschicht** nach.
 
 ## Template-Action: kontrollierter Kontext
 

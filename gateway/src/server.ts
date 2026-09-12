@@ -412,7 +412,7 @@ app.get('/admin/api/logs', requireAuth, (req, res) => {
 app.use('/admin', express.static(join(process.cwd(), 'web')));
 
 app.listen(config.port, () => {
-  console.log(`VoiceAssist Gateway auf Port ${config.port}`);
+  console.log(`MeinHelfer Gateway auf Port ${config.port}`);
 });
 
 if (process.env.LLM_KEEPALIVE_MS !== '0') {

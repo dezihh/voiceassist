@@ -56,7 +56,7 @@ export function fromAssistantResponse(resp: AssistantResponse): Record<string, u
     sessionAttributes: {},
     response: {
       outputSpeech,
-      card: { type: 'Simple', title: 'VoiceAssist', content: cardText },
+      card: { type: 'Simple', title: 'MeinHelfer', content: cardText },
       reprompt: resp.followUp
         ? {
             outputSpeech: {

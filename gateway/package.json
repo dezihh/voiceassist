@@ -1,8 +1,8 @@
 {
-  "name": "voiceassist-gateway",
+  "name": "meinhelfer-gateway",
   "version": "0.1.0",
   "private": true,
-  "description": "VoiceAssist Gateway: Alexa-Adapter, Action-Routing, LLM- und MCP-Orchestrierung, Admin-UI",
+  "description": "MeinHelfer Gateway: Alexa-Adapter, Action-Routing, LLM- und MCP-Orchestrierung, Admin-UI",
   "type": "module",
   "engines": {
     "node": ">=22"

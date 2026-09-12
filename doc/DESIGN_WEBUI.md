@@ -6,9 +6,9 @@
 
 ## Ziele
 
-- Administration des voiceassist-Gateways über den Browser
+- Administration des MeinHelfer-Gateways über den Browser
 - **LAN-only** (Allowlist im Reverse-Proxy), nie internet-exponiert
-- Ein App-Container gemeinsam mit dem Gateway, getrennt via Sub-URL (`/voiceassist/admin/…`)
+- Ein App-Container gemeinsam mit dem Gateway, getrennt via Sub-URL (`/meinhelfer/admin/…`)
 - Portabel: Dev auf `hotel`, Prod-Umzug auf anderen Server – Host/Ports/Tokens nur via Config/`.env`
 
 ## Reiter-Konzept (Navigation)
@@ -50,7 +50,7 @@ sind direkt im UI konfigurierbar/testbar.
 ## Szenarien / Action-Typen & Routing
 
 Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
-(→ Entscheidung in [Issue #1](https://github.com/dezihh/voiceassist/issues/1)):
+(→ Entscheidung in [Issue #1](https://github.com/dezihh/meinhelfer/issues/1)):
 
 | Typ | Szenario | Mechanik | Latenzziel |
 |---|---|---|---|
@@ -67,7 +67,7 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 
 | Thema | Entscheidung |
 |---|---|
-| Container-Layout | **Option A: 1 Container** – Gateway + Admin-UI in einer App; Nginx splittet Sub-URLs (`/voiceassist/api/` exponiert, `/voiceassist/admin/` LAN-only) |
+| Container-Layout | **Option A: 1 Container** – Gateway + Admin-UI in einer App; Nginx splittet Sub-URLs (`/meinhelfer/api/` exponiert, `/meinhelfer/admin/` LAN-only) |
 | Gateway-Backend | **Node.js + TypeScript** (ist auch Backend der Admin-UI; MCP-TypeScript-SDK, LLM via litellm/OpenAI-kompatibel) |
 | Admin-Frontend | **Vanilla HTML/CSS/JS** – kein SPA-Framework, kein Node-Frontend-Build |
 | Admin-Zugang | **LAN-only** (CIDR-Allowlist im Reverse-Proxy), kein zusätzlicher Login im MVP |
@@ -94,5 +94,5 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 
 ## Entscheidungen (Issues)
 
-- [#1 – Routing mit 3 Action-Typen](https://github.com/dezihh/voiceassist/issues/1)
-- [#2 – Runtime-Phasing (Alexa-hosted → AWS-Lambda)](https://github.com/dezihh/voiceassist/issues/2)
+- [#1 – Routing mit 3 Action-Typen](https://github.com/dezihh/meinhelfer/issues/1)
+- [#2 – Runtime-Phasing (Alexa-hosted → AWS-Lambda)](https://github.com/dezihh/meinhelfer/issues/2)

@@ -1,3 +1,5 @@
+name: meinhelfer-gateway
+
 services:
   gateway:
     build:

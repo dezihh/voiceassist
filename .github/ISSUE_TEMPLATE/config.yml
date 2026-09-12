@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Design-Dokumente
-    url: https://github.com/dezihh/voiceassist/tree/main/doc
+    url: https://github.com/dezihh/meinhelfer/tree/main/doc
     about: Design-Diskussionen werden in doc/DESIGN_WEBUI.md und doc/DESIGN_DISPLAY.md geführt und per Issue entschieden.

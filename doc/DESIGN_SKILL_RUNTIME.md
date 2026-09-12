@@ -1,7 +1,7 @@
 # Design: Skill-Runtime & Timing
 
 > Wie das Skill-Backend betrieben wird und wie mit dem Alexa-Antwortfenster
-> umgegangen wird. Entscheidung: [Issue #2](https://github.com/dezihh/voiceassist/issues/2)
+> umgegangen wird. Entscheidung: [Issue #2](https://github.com/dezihh/meinhelfer/issues/2)
 
 ## Ergebnis (umgesetzt)
 
