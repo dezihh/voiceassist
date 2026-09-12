@@ -49,19 +49,20 @@ sind direkt im UI konfigurierbar/testbar.
 
 ## Szenarien / Action-Typen & Routing
 
-Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
-(→ Entscheidung in [Issue #1](https://github.com/dezihh/meinhelfer/issues/1)):
+Die Bedienszenarien werden als **einheitliches Action-Modell** mit `mode`-Feld im
+Router abgebildet (→ Entscheidung in [Issue #1](https://github.com/dezihh/meinhelfer/issues/1)):
 
-| Typ | Szenario | Mechanik | Latenzziel |
+| Mode | Szenario | Mechanik | Latenzziel |
 |---|---|---|---|
-| **Template-Action** | 3 – deterministisches Skript/Formular | Datenquelle (MCP-Call/Skript) + Jinja-Template → verlesfertiger Speech inkl. SSML; LLM-Zwischenschritt **pro Action konfigurierbar** (Standard: aus, LLM nur als Fallback bei Template-Fehlern) | < 3 s |
-| **Prompt-Action** | 2 – Schlagwort → festes Prompt | Schlagworte + RapidFuzz-Ähnlichkeit (Schwellwert pro Action, UI-einstellbar, global abschaltbar, kein LLM-Router) → festes Prompt + MCP-Allowlist → deterministisches Ausgabe-Template | < 6–7 s |
-| **Agent-Query** | 1 – freie LLM-Anfrage | LLM arbeitet frei mit MCP-Tools; Clarification-Budget 1–2 Rückfragen; Tool-Iterations-Limit | volles Fenster |
+| **deterministic** | 3 – deterministisches Skript/Formular | Datenquelle (MCP-Call) + Template/Handler → verlesfertiger Speech inkl. SSML; LLM-Zwischenschritt pro Action konfigurierbar (Standard: aus) | < 3 s |
+| **llm / hybrid** | 2 – Schlagwort → festes Prompt | Schlagworte + Ähnlichkeits-Matching (Schwellwert pro Action, UI-einstellbar, global abschaltbar, kein LLM-Router) → festes Prompt + MCP-Allowlist → deterministisches Ausgabe-Muster | < 6–7 s |
+| **search_summary** | Nachrichten-/Such-Zusammenfassung | Konfigurierbare Quellen (JSON-API `fetch`, feste URLs, Websuche), eine Zusammenfassungs-Runde mit eigenem Modell/Prompt | < 8 s |
+| **agent** | 1 – freie LLM-Anfrage | LLM arbeitet frei mit MCP-Tools; Clarification-Budget 1–2 Rückfragen; Tool-Iterations-Limit | volles Fenster |
 
-- **Routing-Priorität:** Template > Prompt-Action > Agent-Query (Agent = Default-Fallback)
+- **Routing-Priorität:** Action-Treffer (deterministic/llm/hybrid/search_summary) vor Agent-Query (Agent = Default-Fallback)
 - Bei Mehrfach-Treffern gewinnt die längste/spezifischste Phrase
 - **Szenario 4 (proaktiv/geplante Briefings):** bewusst zurückgestellt, Ausblick
-- Konsequenz für den Actions-Editor: drei Editor-Varianten (je Action-Typ)
+- Konsequenz für den Actions-Editor: je Modus ein Editor-Abschnitt (Feldauswahl), einheitliches Formular
 
 ## Entscheidungen (2026-09-06)
 
@@ -73,7 +74,7 @@ Drei Bedienszenarien werden als **Action-Typen** im Router abgebildet
 | Admin-Zugang | **LAN-only** (CIDR-Allowlist im Reverse-Proxy), kein zusätzlicher Login im MVP |
 | Such-MCP | **Bestehender SearXNG-MCP auf knx** wird angebunden, kein eigenes Hosting |
 | HA-MCP | **Offizielle HA-Integration** (`/api/mcp`), Long-Lived Access Token als Bearer; OAuth später (Issue #6) |
-| Client-Auth (POC) | **Statisches Shared Secret**, kein OAuth-Flow; Replay-Schutz später (Issue #5) – getrennte Ebene von MCP-Auth |
+| Client-Auth (POC) | **Zwei Ebenen:** `/alexa` mit applicationId + optionaler Alexa-Signatur-Prüfung; `/api/*`, `/admin/*` mit Bearer-Token; Replay-Schutz später (Issue #5) |
 | Persistenz | **SQLite** (`mcp_servers`, `actions`, `prompts`, `settings`), Credentials pragmatisch via `.env` |
 | Session-Schnittstelle | `sessionId`/`conversationId` ab POC in der internen API, State-Ausbau später (siehe ARCHITECTURE.md) |
 | Nachfragen | **Hybrid-Clarification**: LLM entscheidet, pro Action konfigurierbar, Budget 1–2 Rückfragen |

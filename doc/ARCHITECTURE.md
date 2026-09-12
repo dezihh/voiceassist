@@ -60,24 +60,29 @@ Prosodie-Kontrolle über SSML braucht – ohne dass der Core Alexa-Details kennt
 ```text
 VoiceQuery
   ▼
-Router: Template-Action > Prompt-Action > Agent-Query (Default)
-  ▼                 ▼                       ▼
-Jinja + Kontext   LLM + festes Prompt    LLM frei mit MCP-Tools
-  └────────────────┴───────────────────────┘
-                    ▼
-        AssistantResponse { speech, ssml?, display? }
+Router: Action-Route > Agent-Query (Default)
+  ▼               ▼
+ deterministisch  LLM frei mit MCP-Tools
+ (Handler:       (System-Prompt, Tool-Allowlist,
+  template /      Clarification-Budget)
+  search_summary /            │
+  llm/hybrid)                 ▼
+  └────────────────┬──────────┘
+                   ▼
+        AssistantResponse { speech, ssml?, display?, followUp?, keepOpen? }
 ```
 
 Routing-Details und Latenzbudgets: [DESIGN_WEBUI.md](DESIGN_WEBUI.md), [DESIGN_SKILL_RUNTIME.md](DESIGN_SKILL_RUNTIME.md).
 
 ## Authentifizierung: zwei getrennte Ebenen
 
-| Ebene | POC | Später (Improvement) |
+| Ebene | Stand (Implementierung) | Später (Improvement) |
 |---|---|---|
-| **Client-Auth** (Alexa → Gateway) | statisches Shared Secret, vorab konfiguriert; kein OAuth, kein interaktiver Login | Replay-Schutz via HMAC (Timestamp + Nonce) → Issue #5 |
+| **Client-Auth** (Alexa → Gateway `/alexa`) | `applicationId`-Vergleich; optional Alexa-Signatur-Verifikation (Zertifikatskette gem. Amazon, Timestamp-Toleranz) via `ALEXA_VERIFY_MODE` off/warn/enforce | — |
+| **API-/Admin-Auth** (`/api/*`, `/admin/*`) | Bearer-Token (`AUTH_TOKEN`), constant-time über `timingSafeEqual` | Replay-Schutz via HMAC (Timestamp + Nonce) → Issue #5 |
 | **MCP-Server-Auth** (Gateway → HA `/api/mcp`) | Long-Lived Access Token als Bearer | OAuth (IndieAuth-artig) → Issue #6 |
 
-- Zweck des POC-Client-Auth: „Der Request kommt von meinem Alexa-Client."
+- Zweck der Client-Auth auf `/alexa`: „Der Request kommt von meinem Alexa-Skill (applicationId) und wirklich von Amazon (Signatur)."
 - Eine spätere Trennung zwischen Client-Authentifizierung und User-Identität bleibt möglich
 - Beide Ebenen bewusst nicht vermischt und nicht verkompliziert
 
@@ -129,9 +134,10 @@ SQLite, bewusst klein:
 | Tabelle | Inhalt |
 |---|---|
 | `mcp_servers` | MCP-Server-Registry (URL, Auth-Vermerk, Aktiv-Status) |
-| `actions` | Vorgänge inkl. Trigger, Templates, `mode` (deterministic/llm/hybrid), Flags |
+| `actions` | Vorgänge inkl. Trigger, Templates, `mode` (deterministic/llm/hybrid/search_summary), `handler_config` (JSON), Flags |
 | `prompts` | System-/Agent-Prompte |
-| `settings` | Laufzeit-Einstellungen (Warteton, Timeouts, Fuzzy global) |
+| `settings` | Laufzeit-Einstellungen (Warteton, Timeouts, Fuzzy global, Session-Followup) |
+| `logs` | Request-Log inkl. Route, Latenz, Trace (Tool-Calls, LLM-Schritte) |
 
 Credentials pragmatisch (`.env`/Env-Vars) – kein ausgefeiltes Secret-Management
 als POC-Blocker.
@@ -145,13 +151,16 @@ als POC-Blocker.
 
 ## Conversation State
 
-Die interne API kennt ab POC `sessionId`/`conversationId`:
+Die API kennt `sessionId`:
 
 ```json
 {"sessionId": "…", "query": "Mach es auf 21 Grad"}
 ```
 
-POC: State sehr simpel. Später ausbaubar zu:
+Implementiert (2026-09): Kurzzeitgedächtnis pro Session (`rememberTurn`/`priorTurns`,
+in-memory + Rückgriff auf die letzten Agent-Logs), steuerbar über das Setting
+`session_followup` (llm/keyword/beides) — eine offene Session erlaubt Folgefragen
+ohne erneute Invocation. Ausbaubar zu:
 
 ```text
 session
