@@ -12,6 +12,18 @@ export interface ChatMessage {
   reasoning_content?: string;
 }
 
+export interface LlmUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cached?: boolean;
+}
+
+export interface ChatCompletionResult {
+  message: ChatMessage;
+  usage?: LlmUsage;
+}
+
 export interface ToolSpec {
   type: 'function';
   function: { name: string; description?: string; parameters: unknown };
@@ -22,7 +34,7 @@ export async function chatCompletion(
   tools?: ToolSpec[],
   timeoutMs?: number,
   modelOverride?: string
-): Promise<ChatMessage> {
+): Promise<ChatCompletionResult> {
   const body: Record<string, unknown> = {
     model: modelOverride ?? config.llm.model,
     messages,
@@ -51,13 +63,33 @@ export async function chatCompletion(
   }
   const data = (await res.json()) as {
     choices?: { message?: { role?: string; content?: string | null; tool_calls?: ChatMessage['tool_calls']; reasoning_content?: string } }[];
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+      cached_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   };
   const message = data.choices?.[0]?.message;
   if (!message) throw new Error('LLM: leere Antwort');
+  const usage = data.usage
+    ? {
+        prompt_tokens: data.usage.prompt_tokens,
+        completion_tokens: data.usage.completion_tokens,
+        total_tokens: data.usage.total_tokens,
+        cached:
+          (data.usage.cache_read_input_tokens !== undefined && data.usage.cache_read_input_tokens > 0) ||
+          (data.usage.cached_tokens !== undefined && data.usage.cached_tokens > 0),
+      }
+    : undefined;
   return {
-    role: (message.role ?? 'assistant') as ChatMessage['role'],
-    content: message.content ?? null,
-    ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
-    ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+    message: {
+      role: (message.role ?? 'assistant') as ChatMessage['role'],
+      content: message.content ?? null,
+      ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+      ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+    },
+    usage,
   };
 }

@@ -104,6 +104,18 @@ for (const stmt of [
   }
 }
 
+for (const stmt of [
+  'ALTER TABLE logs ADD COLUMN prompt_tokens INTEGER',
+  'ALTER TABLE logs ADD COLUMN completion_tokens INTEGER',
+  'ALTER TABLE logs ADD COLUMN llm_model TEXT',
+]) {
+  try {
+    db.exec(stmt);
+  } catch {
+    // Spalte existiert bereits
+  }
+}
+
 db.prepare(
   'INSERT OR IGNORE INTO prompts (key, content) VALUES (?, ?)'
 ).run(
@@ -350,12 +362,15 @@ export interface LogEntry {
   response: string;
   durationMs: number;
   trace: TraceEvent[];
+  promptTokens?: number;
+  completionTokens?: number;
+  model?: string;
 }
 
 export function addLog(entry: LogEntry): void {
   db.prepare(
-    `INSERT INTO logs (session_id, query, route, action_id, score, response, duration_ms, trace)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO logs (session_id, query, route, action_id, score, response, duration_ms, trace, prompt_tokens, completion_tokens, llm_model)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     entry.sessionId,
     entry.query,
@@ -364,8 +379,55 @@ export function addLog(entry: LogEntry): void {
     entry.score ?? null,
     entry.response,
     entry.durationMs,
-    JSON.stringify(entry.trace)
+    JSON.stringify(entry.trace),
+    entry.promptTokens ?? null,
+    entry.completionTokens ?? null,
+    entry.model ?? null
   );
+}
+
+export function summarizeUsage(): {
+  requests: number;
+  llmRequests: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedRequests: number;
+} {
+  const rows = db
+    .prepare(
+      "SELECT prompt_tokens, completion_tokens, trace FROM logs WHERE trace IS NOT NULL AND trace != ''"
+    )
+    .all() as { prompt_tokens: number | null; completion_tokens: number | null; trace: string }[];
+  let prompt = 0;
+  let completion = 0;
+  let cacheHits = 0;
+  let llmRequests = 0;
+  for (const r of rows) {
+    let events: TraceEvent[] = [];
+    try {
+      events = JSON.parse(r.trace) as TraceEvent[];
+    } catch {
+      continue;
+    }
+    const usageEvents = events.filter((e) => e.step === 'llm.usage');
+    if (usageEvents.length === 0) continue;
+    llmRequests += 1;
+    prompt += r.prompt_tokens ?? 0;
+    completion += r.completion_tokens ?? 0;
+    for (const e of usageEvents) {
+      const d = e.detail as { cached?: boolean };
+      if (d?.cached) cacheHits += 1;
+    }
+  }
+  return {
+    requests: rows.length,
+    llmRequests,
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: prompt + completion,
+    cachedRequests: cacheHits,
+  };
 }
 
 export function listLogs(limit: number): Record<string, unknown>[] {

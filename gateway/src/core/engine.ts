@@ -6,7 +6,7 @@ import {
   getSetting,
   recentAgentTurns,
 } from '../db.js';
-import { chatCompletion, type ChatMessage, type ToolSpec } from '../llm/client.js';
+import { chatCompletion, type ChatCompletionResult, type ChatMessage, type ToolSpec } from '../llm/client.js';
 import { getMcpContext, type McpContext } from '../mcp/registry.js';
 import { facadeTools, type FacadeTool } from '../tools/facade.js';
 import { routeAction, type RouteMatch } from './router.js';
@@ -168,13 +168,43 @@ function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantRespon
   return { speech: text };
 }
 
+function traceUsage(trace: TraceEvent[], model: string, result: ChatCompletionResult): void {
+  if (!result.usage) return;
+  trace.push({
+    ts: Date.now(),
+    step: 'llm.usage',
+    detail: {
+      model,
+      prompt_tokens: result.usage.prompt_tokens,
+      completion_tokens: result.usage.completion_tokens,
+      total_tokens: result.usage.total_tokens,
+      cached: result.usage.cached,
+    },
+  });
+}
+
+function sumUsageFromTrace(trace: TraceEvent[]): { promptTokens?: number; completionTokens?: number; model?: string } {
+  const sums: Record<string, number> = {};
+  let model: string | undefined;
+  for (const e of trace) {
+    if (e.step !== 'llm.usage') continue;
+    const d = e.detail as Record<string, number | string | boolean | undefined>;
+    const prompt = typeof d.prompt_tokens === 'number' ? d.prompt_tokens : 0;
+    const comp = typeof d.completion_tokens === 'number' ? d.completion_tokens : 0;
+    sums.prompt = (sums.prompt ?? 0) + prompt;
+    sums.completion = (sums.completion ?? 0) + comp;
+    if (!model && typeof d.model === 'string') model = d.model;
+  }
+  return { promptTokens: sums.prompt, completionTokens: sums.completion, model };
+}
+
 async function runToolLoop(
   system: string,
-  query: string,
-  allowlist: string[] | null,
+  queryText: string,
+  source: string | null,
   mcp: McpContext,
   trace: TraceEvent[],
-  sessionId?: string
+  sessionId: string
 ): Promise<AssistantResponse> {
   const { specs, routes } = buildTools(mcp, allowlist);
   const history = sessionId ? priorTurns(sessionId) : [];
@@ -241,18 +271,24 @@ async function runToolLoop(
     const remaining = Math.min(config.toolDeadlineMs, Math.max(overallDeadline - Date.now(), 5000));
     let message: ChatMessage;
     try {
-      message = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining);
+      const result = await chatCompletion(messages, specs.length > 0 ? specs : undefined, remaining);
+      message = result.message;
+      traceUsage(trace, config.llm.model, result);
     } catch (e) {
       if (!(String(e).includes('TimeoutError') || String(e).includes('abort'))) throw e;
       trace.push({ ts: Date.now(), step: 'llm.timeout', detail: { round: i } });
       if (i === 0) {
         try {
-          const retry = await chatCompletion(messages, specs.length > 0 ? specs : undefined, 7000);
+          const retryResult = await chatCompletion(messages, specs.length > 0 ? specs : undefined, 7000);
+          traceUsage(trace, config.llm.model, retryResult);
+          const retry = retryResult.message;
           if (!retry.tool_calls || retry.tool_calls.length === 0) {
             return parseAgentAnswer(retry.content ?? '', trace);
           }
           await runTools(retry);
-          const final = await chatCompletion(messages, undefined, 7000);
+          const finalResult = await chatCompletion(messages, undefined, 7000);
+          traceUsage(trace, config.llm.model, finalResult);
+          const final = finalResult.message;
           return parseAgentAnswer(final.content ?? '', trace);
         } catch (e2) {
           trace.push({ ts: Date.now(), step: 'tool.deadline', detail: String(e2).slice(0, 60) });
@@ -392,10 +428,14 @@ async function executeSearchSummary(
   trace.push({ ts: Date.now(), step: 'action.answer', detail: { model: cfg.model } });
   let message: ChatMessage;
   try {
-    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.model);
+    const result = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.model);
+    message = result.message;
+    traceUsage(trace, cfg.model ?? config.llm.model, result);
   } catch (e) {
     trace.push({ ts: Date.now(), step: 'action.model_fallback', detail: String(e).slice(0, 120) });
-    message = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.fallback_model);
+    const result = await chatCompletion(messages, undefined, config.toolDeadlineMs, cfg.fallback_model);
+    message = result.message;
+    traceUsage(trace, cfg.fallback_model ?? config.llm.model, result);
   }
   const response = parseAgentAnswer(message.content ?? '', trace);
   return { ...response, keepOpen: cfg.keep_open !== false };
@@ -496,6 +536,7 @@ export async function processQuery(query: VoiceQuery): Promise<EngineResult> {
     response: response.speech,
     durationMs,
     trace,
+    ...sumUsageFromTrace(trace),
   });
   return {
     response,

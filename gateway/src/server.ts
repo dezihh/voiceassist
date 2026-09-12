@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import { join } from 'node:path';
 import { config } from './config.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, createSession, sessionValid, cookieFor } from './auth.js';
 import { verifyAlexaSignature } from './alexa-verify.js';
 import { processQuery } from './core/engine.js';
 import { chatCompletion } from './llm/client.js';
@@ -22,6 +22,7 @@ import {
   listPrompts,
   setPrompt,
   setSetting,
+  summarizeUsage,
   updateAction,
   updateMcpServer,
   addLog,
@@ -152,7 +153,7 @@ app.get('/privacy', (req, res) => {
     );
 });
 
-app.post('/alexa', async (req, res) => {
+app.post('/alexa', requireAuth, async (req, res) => {
   const body = req.body as {
     context?: {
       System?: { application?: { applicationId?: string }; apiAccessToken?: string };
@@ -409,6 +410,41 @@ app.get('/admin/api/logs', requireAuth, (req, res) => {
   res.json({ logs: listLogs(limit) });
 });
 
+app.get('/admin/api/usage', requireAuth, (_req, res) => {
+  res.json({ usage: summarizeUsage() });
+});
+
+// Admin-UI-Login: Token pruefen, Session-Cookie setzen
+app.post('/admin/login', (req, res) => {
+  const header = req.headers.authorization ?? '';
+  const bearer = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const token = bearer || String((req.body as { token?: unknown })?.token ?? '');
+  const sessionId = createSession(token);
+  if (!sessionId) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  res.setHeader('Set-Cookie', cookieFor(sessionId));
+  res.json({ ok: true, token: sessionId });
+});
+
+// Login-Seite ist ohne Session erreichbar (legt das Cookie)
+app.get('/admin/login.html', (_req, res) => {
+  res.sendFile(join(process.cwd(), 'web', 'login.html'));
+});
+
+// Statische Admin-UI nur mit gueltiger Session (Login-Cookie oder Bearer-Query)
+app.use('/admin', (req, res, next) => {
+  if (!sessionValid(req)) {
+    if (req.headers.accept?.includes('text/html')) {
+      res.redirect('/admin/login.html');
+      return;
+    }
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  next();
+});
 app.use('/admin', express.static(join(process.cwd(), 'web')));
 
 app.listen(config.port, () => {
