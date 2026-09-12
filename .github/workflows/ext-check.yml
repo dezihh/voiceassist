@@ -3,21 +3,30 @@ name: External Endpoint Check
 on:
   workflow_dispatch:
 
+# Requires the repository variables EXTERNAL_BASE_URL (e.g. https://gateway.example.com)
+# and ALEXA_SKILL_ID. The job is skipped when they are not configured.
 jobs:
   extcheck:
+    if: vars.EXTERNAL_BASE_URL != '' && vars.ALEXA_SKILL_ID != ''
     runs-on: ubuntu-latest
+    env:
+      EXTERNAL_BASE_URL: ${{ vars.EXTERNAL_BASE_URL }}
+      ALEXA_SKILL_ID: ${{ vars.ALEXA_SKILL_ID }}
     steps:
-      - name: Oeffentliche Erreichbarkeit vsys.ziegler-eu.de pruefen
+      - name: Oeffentliche Erreichbarkeit des externen Endpoints pruefen
         run: |
+          BASE="${EXTERNAL_BASE_URL%/}"
+          HOST="${BASE#https://}"
+          HOST="${HOST%%/*}"
           echo "=== Runner-IP:"
           curl -s https://checkip.amazonaws.com || true
           echo "=== DNS:"
-          getent hosts vsys.ziegler-eu.de || nslookup vsys.ziegler-eu.de 2>&1 | tail -3
+          getent hosts "$HOST" || nslookup "$HOST" 2>&1 | tail -3
           echo "=== TLS-Handshake + GET /privacy:"
-          curl -sS -m 20 -o /dev/null -w "GET /privacy -> HTTP %{http_code}, tls_verify=%{ssl_verify_result}, total=%{time_total}s\n" https://vsys.ziegler-eu.de/privacy 2>&1
+          curl -sS -m 20 -o /dev/null -w "GET /privacy -> HTTP %{http_code}, tls_verify=%{ssl_verify_result}, total=%{time_total}s\n" "${BASE}/privacy" 2>&1
           echo "=== POST /alexa (LaunchRequest, korrekte appId):"
-          BODY='{"version":"1.0","session":{"new":true,"sessionId":"amzn1.echo-api.session.extcheck","application":{"applicationId":"amzn1.ask.skill.070bad87-ac04-4fa2-9f49-8cdd3e3b1ec1"}},"context":{"System":{"application":{"applicationId":"amzn1.ask.skill.070bad87-ac04-4fa2-9f49-8cdd3e3b1ec1"}}},"request":{"type":"LaunchRequest","requestId":"amzn1.echo-external.request.extcheck"}}'
-          curl -sS -m 20 -o /tmp/resp.json -w "POST /alexa -> HTTP %{http_code}, total=%{time_total}s\n" -X POST -H "Content-Type: application/json" --data-binary "${BODY}" https://vsys.ziegler-eu.de/alexa 2>&1
+          BODY=$(printf '{"version":"1.0","session":{"new":true,"sessionId":"amzn1.echo-api.session.extcheck","application":{"applicationId":"%s"}},"context":{"System":{"application":{"applicationId":"%s"}}},"request":{"type":"LaunchRequest","requestId":"amzn1.echo-external.request.extcheck"}}' "$ALEXA_SKILL_ID" "$ALEXA_SKILL_ID")
+          curl -sS -m 20 -o /tmp/resp.json -w "POST /alexa -> HTTP %{http_code}, total=%{time_total}s\n" -X POST -H "Content-Type: application/json" --data-binary "${BODY}" "${BASE}/alexa" 2>&1
           head -c 400 /tmp/resp.json; echo ""
           echo "=== TLS-Details:"
-          echo | openssl s_client -connect vsys.ziegler-eu.de:443 -servername vsys.ziegler-eu.de 2>/dev/null | grep -E "subject=|issuer=|Verify return" || true
+          echo | openssl s_client -connect "${HOST}:443" -servername "$HOST" 2>/dev/null | grep -E "subject=|issuer=|Verify return" || true
