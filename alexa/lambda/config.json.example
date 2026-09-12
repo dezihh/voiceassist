@@ -1,6 +1,8 @@
 {
   "gateway_url": "https://your-gateway.example.com",
   "gateway_token": "<AUTH_TOKEN aus gateway/.env>",
-  "watchdog_delay": "20",
-  "gateway_timeout": "28"
+  "watchdog_delay": "5",
+  "gateway_timeout": "28",
+  "skill_name": "MeinHelfer",
+  "assistant_name": "Smart Pilot"
 }

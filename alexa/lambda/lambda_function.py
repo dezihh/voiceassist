@@ -45,7 +45,7 @@ watchdog_delay = float(os.environ.get("watchdog_delay", "6.5"))
 gateway_timeout = float(os.environ.get("gateway_timeout", "28"))
 ALEXA_WINDOW = 8.0
 
-SPEAK_WELCOME = "Hallo, ich bin Ihr Voice-Assistent. Was kann ich für Sie tun?"
+SPEAK_WELCOME = "Hallo, ich bin " + os.environ.get("assistant_name", "Ihr Voice-Assistent") + ". Was kann ich für Sie tun?"
 SPEAK_HELP = "Sie können mir zum Beispiel nach dem Hausstatus oder aktuellen Informationen fragen."
 SPEAK_STOP = random.choice(["Bis zum nächsten Mal.", "Alles klar, bis später.", "Okay, tschüss."])
 SPEAK_ERROR = "Entschuldigung, da ist etwas schiefgelaufen."
@@ -60,7 +60,7 @@ def strip_ssml(text):
     return text.strip()
 
 
-CARD_TITLE = "MeinHelfer"
+CARD_TITLE = os.environ.get("skill_name", "MeinHelfer")
 
 # APL-Layout: kontrollierte Schriftgroesse (28dp) + Scroll fuer lange Texte
 APL_DOCUMENT = {

@@ -168,6 +168,15 @@ function parseAgentAnswer(content: string, trace: TraceEvent[]): AssistantRespon
   return { speech: text };
 }
 
+function assistantName(): string {
+  return getSetting('assistant_name') ?? 'Smart Pilot';
+}
+
+function promptWithName(key: string): string | undefined {
+  const raw = getPrompt(key);
+  return raw?.replace('{assistant_name}', assistantName());
+}
+
 function traceUsage(trace: TraceEvent[], model: string, result: ChatCompletionResult): void {
   if (!result.usage) return;
   trace.push({
@@ -307,7 +316,7 @@ async function runToolLoop(
 }
 
 async function runAgent(query: VoiceQuery, mcp: McpContext, trace: TraceEvent[]): Promise<AssistantResponse> {
-  const system = getPrompt('agent_system') ?? 'Du bist ein hilfreicher deutscher Sprachassistent.';
+  const system = promptWithName('agent_system') ?? 'Du bist ein hilfreicher deutscher Sprachassistent.';
   const response = await runToolLoop(system, query.text, null, mcp, trace, query.sessionId);
   rememberTurn(query.sessionId, query.text, response.speech);
   return response;
@@ -415,8 +424,8 @@ async function executeSearchSummary(
   if (!snippets) return { speech: 'Dazu habe ich gerade keine aktuellen Informationen gefunden.' };
 
   const system =
-    cfg.answer_prompt ??
-    getPrompt('fastpath_system') ??
+    cfg.answer_prompt?.replace('{assistant_name}', assistantName()) ??
+    promptWithName('fastpath_system') ??
     'Du bist ein hilfreicher deutscher Sprachassistent. Die Websuche ist bereits erfolgt.';
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
@@ -451,12 +460,12 @@ async function executeAction(
     return executeSearchSummary(action, query, mcp, trace);
   }
   if (action.mode === 'llm' || (action.mode === 'hybrid' && !action.template)) {
-    const system = action.system_prompt ?? getPrompt('agent_system') ?? '';
+    const system = action.system_prompt?.replace('{assistant_name}', assistantName()) ?? promptWithName('agent_system') ?? '';
     return runToolLoop(system, query.text, action.toolList, mcp, trace);
   }
   const rendered = await renderActionTemplate(action.template ?? '', mcp, trace);
   if (action.mode === 'deterministic') return rendered;
-  const system = action.system_prompt ?? getPrompt('agent_system') ?? '';
+  const system = action.system_prompt?.replace('{assistant_name}', assistantName()) ?? promptWithName('agent_system') ?? '';
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
     {

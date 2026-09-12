@@ -1,0 +1,120 @@
+name: Deploy Alexa (CodeCommit push + SMAPI build)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Ziel-Branch im Alexa-Repo (dev = Test, master = Live)"
+        default: "dev"
+      skill_id:
+        description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
+        default: ""
+      note:
+        description: "Hinweis (wird in Commit-Message geschrieben)"
+        default: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ask-Credentials + CodeCommit einrichten
+        env:
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
+        run: |
+          mkdir -p ~/.ask/scripts
+          cp .github/ask/git-credential-helper ~/.ask/scripts/git-credential-helper
+          cp .github/ask/ask-pre-push ~/.ask/scripts/ask-pre-push
+          chmod +x ~/.ask/scripts/git-credential-helper ~/.ask/scripts/ask-pre-push
+          echo "${{ secrets.ASK_AUTH_INFO }}" | base64 -d > ~/.ask/auth_info
+          echo "${{ secrets.ASK_CLI_CONFIG }}" | base64 -d > ~/.ask/cli_config
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          REPO_ID="${SKILL_ID#amzn1.ask.skill.}"
+          REPO_URL="https://git-codecommit.us-east-1.amazonaws.com/v1/repos/${REPO_ID}"
+          HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
+          git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
+          git config "credential.https://${HOST_PATH}".UseHttpPath true
+          git remote add alexa "${REPO_URL}" 2>/dev/null || true
+          git fetch alexa '+refs/heads/*:refs/remotes/alexa/*' || true
+
+      - name: Namen rendern + config.json aus Secrets bauen
+        id: render
+        env:
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          sc = json.load(open("alexa/skill.config.json"))
+          # invocationName in de-DE.json setzen
+          im = json.load(open("alexa/skill-package/interactionModels/custom/de-DE.json"))
+          lang = im["interactionModel"]["languageModel"]
+          lang["invocationName"] = sc["invocation_name"]
+          json.dump(im, open("alexa/skill-package/interactionModels/custom/de-DE.json", "w"), ensure_ascii=False, indent=2)
+          # skill.json: displayName + per-Locale-Namen aus skill.config.json
+          sj = json.load(open("alexa/skill-package/skill.json"))
+          sj["manifest"]["publishingInformation"]["locales"]["de-DE"]["name"] = sc["skill_name"]
+          json.dump(sj, open("alexa/skill-package/skill.json", "w"), ensure_ascii=False, indent=2)
+          # hosted config.json: Secret-Token einsetzen, niemals in Repo
+          cfg = {
+              "gateway_url": "${{ secrets.GATEWAY_URL }}",
+              "gateway_token": "${{ secrets.GATEWAY_TOKEN }}",
+              "watchdog_delay": "5",
+              "gateway_timeout": "28",
+              "skill_name": sc["skill_name"],
+              "assistant_name": sc["assistant_name"],
+          }
+          json.dump(cfg, open("alexa/lambda/config.json", "w"), ensure_ascii=False, indent=2)
+          PYEOF
+          echo "gerendert: invocation=$(python3 -c 'import json;print(json.load(open("alexa/skill-package/interactionModels/custom/de-DE.json"))["interactionModel"]["languageModel"]["invocationName"])')"
+          echo "config.json wird NIE committed, nur in den Alexa-Branch gepusht (gitignored)"
+
+      - name: Nach Alexa pushen (CodeCommit, Branch ${{ inputs.branch }})
+        env:
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          REPO_ID="${SKILL_ID#amzn1.ask.skill.}"
+          REPO_URL="https://git-codecommit.us-east-1.amazonaws.com/v1/repos/${REPO_ID}"
+          HOST_PATH=$(echo "${REPO_URL}" | sed -E 's#^https://##')
+          git config "credential.https://${HOST_PATH}".helper "!$HOME/.ask/scripts/git-credential-helper default ${SKILL_ID}"
+          git config "credential.https://${HOST_PATH}".UseHttpPath true
+          git remote get-url alexa 2>/dev/null || git remote add alexa "${REPO_URL}"
+          git fetch alexa '+refs/heads/*:refs/remotes/alexa/*' || true
+          # Arbeitsbaum mit den Alexa-Dateien befuellen (hosted-Repo-Struktur)
+          git checkout HEAD -- alexa/lambda alexa/skill-package 2>/dev/null || true
+          rm -rf /tmp/adeploy && mkdir -p /tmp/adeploy
+          cp -r alexa/lambda /tmp/adeploy/lambda
+          cp -r alexa/skill-package /tmp/adeploy/skill-package
+          git worktree add /tmp/adeploy/repo HEAD
+          cd /tmp/adeploy/repo
+          git fetch alexa "+refs/heads/${BRANCH}:refs/remotes/alexa/${BRANCH}" || true
+          git checkout -B "${BRANCH}" "alexa/${BRANCH}" 2>/dev/null || git checkout -B "${BRANCH}"
+          rm -rf lambda skill-package
+          cp -r /tmp/adeploy/lambda /tmp/adeploy/repo/lambda
+          cp -r /tmp/adeploy/skill-package /tmp/adeploy/repo/skill-package
+          git add -A
+          git -c user.email="ci@meinhelfer" -c user.name="MeinHelfer CI" commit -m "deploy: ${{ inputs.note || 'Lauffaehige Files' }}" || echo "keine Dateiaenderung"
+          git push alexa "HEAD:${BRANCH}" 2>&1 | tail -4
+
+      - name: SMAPI Build-Status pollen
+        env:
+          SKILL_ID: ${{ inputs.skill_id || secrets.ALEXA_SKILL_ID }}
+        run: |
+          source ~/.ask/auth_info
+          REFRESH=$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.ask/cli_config")))["profiles"]["default"]["token"]["refresh_token"])')
+          export ASK_REFRESH_TOKEN="${REFRESH}"
+          TOKEN=$(curl -f -s --data-urlencode "grant_type=refresh_token" --data-urlencode "client_id=${ask_client_id}" --data-urlencode "client_secret=${ask_client_confirmation}" --data-urlencode "refresh_token=${REFRESH}" "${ask_lwa_api}"/auth/O2/token)
+          ACCESS=$(echo "${TOKEN}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+          for i in $(seq 1 24); do
+            sleep 10
+            S=$(curl -s -H "Authorization: Bearer ${ACCESS}" "${ask_smapi_api}/v1/skills/${SKILL_ID}/status?resource=skillPackage" | python3 -c 'import json,sys; d=json.load(sys.stdin); sp=d.get("skillPackage",{}); print(next(iter(sp.values())).get("lastUpdateRequest",{}).get("status","?") if sp else "?")' 2>/dev/null || echo UNKNOWN)
+            echo "  poll $i: ${S}"
+            if [ "${S}" = "SUCCEEDED" ] || [ "${S}" = "FAILURE" ]; then break; fi
+          done

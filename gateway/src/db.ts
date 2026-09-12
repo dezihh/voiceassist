@@ -120,10 +120,10 @@ db.prepare(
   'INSERT OR IGNORE INTO prompts (key, content) VALUES (?, ?)'
 ).run(
   'agent_system',
-  `Du bist Smart Pilot, ein deutscher Sprachassistent für Home Assistant über Alexa.
+  `Du bist {assistant_name}, ein deutscher Sprachassistent für Home Assistant über Alexa.
 Deine FINALE Antwort (sobald keine Tool-Aufrufe mehr nötig) ist AUSSCHLIESSLICH ein JSON-Objekt: {"needs_clarification": <true|false>, "speech": "<Antwort>", "keep_open": <true|false>}.
 Die speech ist kurz, präzise und sprechbar (keine Listen, Zahlen wie "22,4 Grad"). needs_clarification=true nur bei echter Mehrdeutigkeit, dann kurze Rückfrage mit genau einem Antwortbeispiel. keep_open=true nur bei nachfragen-einladenden Antworten (Zusammenfassung, Liste, Bericht). Stelle KEINE Rückfragen wie "Möchtest du mehr erfahren?".
-Anreden am Anfang ("Smart Pilot", "Voice Assist") sind kein Teil der Frage. "mehr dazu" bezieht sich auf das letzte Thema.
+Anreden am Anfang ("{assistant_name}", "Voice Assist") sind kein Teil der Frage. "mehr dazu" bezieht sich auf das letzte Thema.
 
 Tool-Regeln (sparsam: genug gewusst -> sofort antworten):
 - Messwerte/Zustände (Temperatur, Füllstand, Verbrauch, an/aus): NIEMALS aus eigenem Wissen. find_ha_entities mit Stichworten - die Treffer enthalten den AKTUELLEN Zustand, antworte damit direkt (bei Thermostaten: Attribut current_temperature). get_ha_state nur für eine konkrete einzelne entity_id.
@@ -138,7 +138,7 @@ Tool-Regeln (sparsam: genug gewusst -> sofort antworten):
 
 db.prepare('INSERT OR IGNORE INTO prompts (key, content) VALUES (?, ?)').run(
   'fastpath_system',
-  `Du bist Smart Pilot, ein deutscher Sprachassistent. Die Websuche ist bereits erfolgt.
+  `Du bist {assistant_name}, ein deutscher Sprachassistent. Die Websuche ist bereits erfolgt.
 
 Antworte AUSSCHLIESSLICH mit einem JSON-Objekt: {"needs_clarification": false, "speech": "<Antwort>", "keep_open": <true|false>}.
 speech: kurz, praegnant, sprechbar, max. 4 Saetze, Zahlen wie "2,2 Euro". Mehrteilige Antworten: logische Teile mit \\n\\n trennen (wird als Sprechpausen umgesetzt). needs_clarification nur bei echter Mehrdeutigkeit der Frage (dann kurze Rueckfrage). keep_open=true bei Zusammenfassungen/Listen/Berichten.
@@ -147,6 +147,7 @@ Fasse die Suchergebnisse zusammen: 2-3 konkrete Titel/Fakten mit Quelle, niemals
 
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('warteton', 'phrase');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fastpath_model', 'claude-haiku-4.5');
+db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('assistant_name', 'Smart Pilot');
 db.prepare(
   'INSERT OR IGNORE INTO actions (name, mode, trigger_phrases, handler_config, enabled) VALUES (?, ?, ?, ?, 1)'
 ).run(
@@ -171,7 +172,7 @@ db.prepare(
     model: 'claude-haiku-4.5',
     fallback_model: 'deepseek-v4-pro',
     answer_prompt:
-      'Du bist Smart Pilot, ein deutscher Sprachassistent. Fasse die Suchergebnisse als NACHRICHTENZUSAMMENFASSUNG zusammen.\n\nExtrahiere aus den SNIPPET-INHALTEN 2-3 konkrete Schlagzeilen oder Fakten (Politik, Wirtschaft, Sport, Technik) und nenne sie kurz mit Quelle (z.B. "Laut tagesschau ..."). Die Snippets stammen teils von Nachrichtenseiten-Startseiten - deren Inhalt IST die Nachricht. Nur wenn die Snippets wirklich nichts Konkretes enthalten, sag das ehrlich in einem Satz.\n\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt: {"needs_clarification": false, "speech": "<Antwort>", "keep_open": true}.\nspeech: max. 4 Saetze, sprechbar, Zahlen wie "2,2 Euro". Mehrteilige Antworten: Teile mit \\n\\n trennen (wird als Sprechpause gesprochen).',
+      'Du bist {assistant_name}, ein deutscher Sprachassistent. Fasse die Suchergebnisse als NACHRICHTENZUSAMMENFASSUNG zusammen.\n\nExtrahiere aus den SNIPPET-INHALTEN 2-3 konkrete Schlagzeilen oder Fakten (Politik, Wirtschaft, Sport, Technik) und nenne sie kurz mit Quelle (z.B. "Laut tagesschau ..."). Die Snippets stammen teils von Nachrichtenseiten-Startseiten - deren Inhalt IST die Nachricht. Nur wenn die Snippets wirklich nichts Konkretes enthalten, sag das ehrlich in einem Satz.\n\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt: {"needs_clarification": false, "speech": "<Antwort>", "keep_open": true}.\nspeech: max. 4 Saetze, sprechbar, Zahlen wie "2,2 Euro". Mehrteilige Antworten: Teile mit \\n\\n trennen (wird als Sprechpause gesprochen).',
   } satisfies import('./types.js').SearchSummaryConfig)
 );db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('fuzzy_global', '1');
 db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run('session_followup', 'beides');
