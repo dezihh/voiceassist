@@ -9,7 +9,7 @@
 - Administration des MeinHelfer-Gateways über den Browser
 - **LAN-only** (Allowlist im Reverse-Proxy), nie internet-exponiert
 - Ein App-Container gemeinsam mit dem Gateway, getrennt via Sub-URL (`/meinhelfer/admin/…`)
-- Portabel: Dev auf `hotel`, Prod-Umzug auf anderen Server – Host/Ports/Tokens nur via Config/`.env`
+- Portabel: Umzug zwischen Umgebungen und Servern – Host, Ports und Tokens nur via Config/`.env`
 
 ## Reiter-Konzept (Navigation)
 

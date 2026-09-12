@@ -20,7 +20,7 @@ Alexa (Echo-Geräte)
   │
   ▼
 AWS Lambda  ── Thin Adapter: Locale, SSML, APL, Session/Progressive Response
-  │ HTTPS (Bearer/HMAC, Reverse-Proxy, Sub-URL)
+  │ HTTPS (Bearer-Token, optional hinter Reverse-Proxy)
   ▼
 MeinHelfer Gateway (lokal, Docker, Node.js + TypeScript)
   ├─ Router: gelenkte Prompt-Actions (deterministische Ausgaben, z. B. „Hausstatus“)
@@ -35,13 +35,13 @@ Zentrale Architekturregeln (Adapter-Muster, Auth-/Berechtigungs-Ebenen, Datenmod
 
 - **MCP-Integration:** Alexa-Anfragen werden von lokalen MCP-Servern beantwortet (HA, Suche, …)
 - **Gelenkte Prompt-Actions:** definierte Prompts lösen Aktionen aus, die das LLM mit definierten Tools ausführt und nach deterministischem Muster strukturiert zurückgibt (z. B. Hausstatus, Nachrichten zu Thema X)
-- **Hybrid-Nachfragen (Clarification):** das LLM darf Rückfragen stellen, pro Action konfigurierbar, mit Budget (1–2 Rückfragen)
+- **Nachfragen bei Mehrdeutigkeit (Clarification):** bei unklaren Fragen darf das LLM kurz nachfragen – die Session bleibt dafür offen
 - **Kontext & Follow-ups:** jede Antwort wandert ins Kurzzeitgedächtnis, Folgefragen innerhalb einer offenen Session funktionieren ohne Neu-Invocation
 - **Warteton bei längerer Recherche:** dauert eine Antwort länger, meldet sich der Skill nach wenigen Sekunden mit einer kurzen Ansage (Progressive Response), damit Alexa das Antwortfenster nicht abbricht
 - **Echo-Show (APL):** Antworten mit scrollbarem Text auf Geräten mit Bildschirm
 - **Thin Lambda:** AWS-Seite minimal halten (Locale/SSML/APL/Session), gesamte Logik lokal im Gateway
 - **Admin-Web-UI:** LAN-only – Dashboard, Actions-Editor, MCP-Registry, Test-Konsole, Logs (Design in `doc/DESIGN_WEBUI.md`)
-- **Portabel:** Dev auf `hotel`, Produktivumzug auf anderen Server – Domain/Ports/Tokens rein über Config/`.env`
+- **Portabel:** Umzug zwischen Umgebungen und Servern – Domain, Ports und Tokens nur über Config/`.env`
 
 ## Sicherheit
 
@@ -49,15 +49,15 @@ Das Projekt bringt eigenen Schutz mit, setzt aber **keinen Reverse-Proxy voraus*
 
 **Im Projekt selbst:**
 
-- `/alexa` (Skill-Endpoint): validiert die `applicationId` und optional die Alexa-Signatur (Zertifikatskette, Timestamp-Toleranz; Modus off/warn/enforce über `.env`)
-- `/api/*` und `/admin/*`: Bearer-Token-Auth (`AUTH_TOKEN`), constant-time verglichen
+- `/alexa` (Skill-Endpoint): vergleicht die `applicationId` mit `ALEXA_SKILL_ID` (aktiv, sobald gesetzt) und verifiziert optional die Alexa-Signatur (Zertifikatskette gemäß Amazon, Timestamp-Toleranz; Modus `off`/`warn`/`enforce` über `.env`, Default `off` – für öffentliche Deployments `enforce` empfohlen)
+- `/api/*` und `/admin/*`: Bearer-Token-Auth (`AUTH_TOKEN`), constant-time verglichen; die Lambda ruft `/api/query` mit demselben Token auf (`gateway_token` in ihrer `config.json`)
 - JSON-Body-Limit (1 MB), Non-Root-Container, gepinnte Dependencies, Secrets nur via `.env` (nie im Repo)
 - Admin-UI: nie im Internet exponieren; im Reverse-Proxy auf LAN-Allowlist legen
 - Prompt-Injection-Schutz: deterministische Ausgabe-Templates, Tool-Allowlist, strikte Antwortvalidierung
 
 **Empfohlen (Reverse-Proxy, z. B. nginx):**
 
-- TLS-Beendung für `vsys.ziegler-eu.de` etc.
+- TLS-Beendigung für den öffentlichen Endpoint
 - Rate-Limiting als zusätzliche Drossel
 - LAN-Allowlist für die Admin-UI
 
@@ -84,4 +84,5 @@ Ideen, die nicht versprochen, aber festgehalten sind — gerne priorisieren:
 - **Musik (via MCP):** Music Assistant bietet einen MCP-Server (Player, Suche, Queue, Playlists) → Motivation: MeinHelfer als Sprach-Steuerung. Hinweis: echte Audio-Wiedergabe auf dem Echo läuft über den separaten Alexa-Provider von Music Assistant, nicht über diesen Skill.
 - **Echo-Show Autoscroll:** scrollbaren Text auf Bildschirm-Geräten zusätzlich automatisch weiterlaufen lassen (Barrierefreiheit).
 - **Weitere MCP-Quellen:** z. B. Kalender/Wetter/Verkehr als weitere MCP-Server.
+- **Rückfrage-Budget pro Action:** Nachfragen pro Action konfigurierbar machen und begrenzen (1–2 Nachfragen) – die Nachfrage-Mechanik ist aktiv, Budget- und Pro-Action-Steuerung stehen noch aus.
 - **Mehrsprachigkeit:** Skill-Name und Begrüßung konfigurierbar, sodass z. B. englischsprachige Nutzer den Skill ohne Code-Eingriff umbenennen können.

@@ -78,7 +78,7 @@ Routing-Details und Latenzbudgets: [DESIGN_WEBUI.md](DESIGN_WEBUI.md), [DESIGN_S
 
 | Ebene | Stand (Implementierung) | Später (Improvement) |
 |---|---|---|
-| **Client-Auth** (Alexa → Gateway `/alexa`) | `applicationId`-Vergleich; optional Alexa-Signatur-Verifikation (Zertifikatskette gem. Amazon, Timestamp-Toleranz) via `ALEXA_VERIFY_MODE` off/warn/enforce | — |
+| **Client-Auth** (Alexa → Gateway `/alexa`) | `applicationId`-Vergleich gegen `ALEXA_SKILL_ID` (aktiv, sobald gesetzt); optionale Alexa-Signatur-Verifikation (Zertifikatskette gem. Amazon, Timestamp-Toleranz) via `ALEXA_VERIFY_MODE` off/warn/enforce (Default `off`) | — |
 | **API-/Admin-Auth** (`/api/*`, `/admin/*`) | Bearer-Token (`AUTH_TOKEN`), constant-time über `timingSafeEqual` | Replay-Schutz via HMAC (Timestamp + Nonce) → Issue #5 |
 | **MCP-Server-Auth** (Gateway → HA `/api/mcp`) | Long-Lived Access Token als Bearer | OAuth (IndieAuth-artig) → Issue #6 |
 
