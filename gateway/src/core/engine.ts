@@ -213,14 +213,15 @@ async function runToolLoop(
   source: string | null,
   mcp: McpContext,
   trace: TraceEvent[],
-  sessionId: string
+  sessionId: string,
+  allowlist: string[] | null = null
 ): Promise<AssistantResponse> {
   const { specs, routes } = buildTools(mcp, allowlist);
   const history = sessionId ? priorTurns(sessionId) : [];
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
     ...history,
-    { role: 'user', content: query },
+    { role: 'user', content: queryText },
   ];
   const overallDeadline = Date.now() + config.toolDeadlineMs * 2;
   const TimeoutAnswer = 'Das hat gerade zu lange gedauert, bitte versuche es gleich noch einmal.';

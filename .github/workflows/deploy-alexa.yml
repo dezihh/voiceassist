@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Ziel-Branch im Alexa-Repo (leer/auto = vorhandener Branch, meist master)"
-        default: ""
+        description: "Ziel-Branch im Alexa-Repo (Default dev = unsere Produktion; master ist nur fuer echten Public-Release)"
+        default: "dev"
       skill_id:
         description: "Skill-ID (leer = Secret ALEXA_SKILL_ID)"
         default: ""
